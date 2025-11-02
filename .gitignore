@@ -1,0 +1,96 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Local data files
+*.csv
+*.json
+*.h5
+*.pkl
+
+# Environment files
+.env
+.venv/
+venv/
+ENV/
+env.bak/
+env/
+
+# Sensitive files (from your codebase)
+Day_4_Projects/key_file.py
+Day_4_Projects/key_file_laptop.py
+Day_4_Projects/dontshare.py
+Day_27_Projects/dontshareconfig.py
+Day_28_Projects/dontshare.py
+Day_30_Projects/dontshare.py
+Day_31_Projects/dontshare.py
+Day_38_Projects/dontshare.py
+Day_47_Projects/dontshare.py
+Day_48_Projects/dontshare.py
+**/dontshare*.py
+**/key_file*.py
+**/*CONFIG*.py
+**/*config*.py
+Day_28_Projects/cookies.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*~ 
+
+.history
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Virtual environments
+autonomous_trading_system/backend/venv/
+**/venv/
+**/.venv/
+
+# Compiled Python files
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Claude Code
+.claude/

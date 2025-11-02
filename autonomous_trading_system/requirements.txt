@@ -1,0 +1,94 @@
+# Social Sentiment Analysis
+textblob==0.17.1
+vaderSentiment==3.3.2
+tweepy==4.14.0
+praw==7.7.1
+beautifulsoup4==4.12.2
+selenium==4.15.2
+requests-html==0.10.0
+
+# Twitter Sentiment Collector (Day 28 integration)
+twikit==1.5.5
+fake-useragent==1.4.0
+httpx==0.25.2
+
+# Twitter Solana Bot (Day 36)
+schedule==1.2.0
+
+# Multi-Exchange Integration
+ccxt==4.1.30
+websockets==12.0
+aiohttp==3.9.1
+python-binance==1.0.19
+
+# RSI Indicator (Day 7)
+pandas==1.5.3
+ta==0.10.2
+
+# Backtesting
+backtesting==0.3.3
+seaborn==0.13.0
+matplotlib==3.8.2
+
+# Kalman Filter Strategy (Day 23)
+pykalman==0.9.5
+scikit-optimize==0.9.0
+
+# Advanced Analytics
+plotly==5.17.0
+dash==2.14.2
+streamlit==1.28.2
+bokeh==3.3.2
+
+# Machine Learning (for future ML strategies)
+scikit-learn==1.3.2
+tensorflow==2.15.0
+torch==2.1.1
+xgboost==2.0.2
+lightgbm==4.1.0
+tqdm==4.66.1
+
+# Performance & Monitoring
+redis==5.0.1
+prometheus-client==0.19.0
+psutil==5.9.6
+memory-profiler==0.61.0
+
+# Additional Data Sources
+yfinance==0.2.28
+alpha-vantage==2.3.1
+quandl==3.7.0
+hyperliquid-python-sdk>=0.15.0
+
+# Enhanced Security
+cryptography==41.0.7
+bcrypt==4.1.2
+passlib==1.7.4
+
+# Development & Testing
+pytest-mock==3.12.0
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Documentation
+sphinx==7.2.6
+sphinx-rtd-theme==1.3.0
+
+# Deployment
+gunicorn==21.2.0
+uvloop==0.19.0; sys_platform != "win32"
+docker==6.1.3
+
+# Indicator libraries
+pandas-ta==0.3.14b0
+TA-Lib
+
+# Solana Trading Dependencies
+solders==0.21.0
+solana==0.34.0
+anchorpy==0.19.1
+construct==2.10.70
+websockets==12.0 

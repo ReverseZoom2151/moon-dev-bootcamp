@@ -1,0 +1,6 @@
+pandas
+requests
+schedule
+twikit
+solana
+solders 
