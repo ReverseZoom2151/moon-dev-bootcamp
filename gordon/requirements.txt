@@ -1,0 +1,63 @@
+# Exchange Orchestrator Requirements
+# ==================================
+
+# Core Dependencies
+python-dotenv>=1.0.0
+pyyaml>=6.0
+aiohttp>=3.9.0
+asyncio>=3.4.3
+websockets>=11.0.3
+
+# Exchange Integrations
+ccxt>=4.1.0
+python-binance>=1.0.17
+hyperliquid-python>=0.1.0
+eth-account>=0.10.0
+web3>=6.0.0
+
+# Technical Analysis & Data
+pandas>=2.0.0
+numpy>=1.24.0
+ta>=0.10.0
+pandas-ta>=0.3.14b0
+ta-lib>=0.4.28  # Note: Requires TA-Lib C library
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# Backtesting
+backtesting>=0.3.3
+backtrader>=1.9.78.123
+
+# Visualization & Output
+matplotlib>=3.7.0
+plotly>=5.17.0
+termcolor>=2.3.0
+
+# Database (optional)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0  # For PostgreSQL
+pymongo>=4.5.0  # For MongoDB
+
+# Machine Learning (optional, for advanced strategies)
+tensorflow>=2.14.0
+torch>=2.0.0
+xgboost>=2.0.0
+lightgbm>=4.1.0
+
+# Utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+requests>=2.31.0
+cryptography>=41.0.0
+httpx>=0.25.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Development (optional)
+black>=23.0.0
+flake8>=6.1.0
+mypy>=1.5.0
+ipython>=8.15.0
