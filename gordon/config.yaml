@@ -524,6 +524,14 @@ dqn_rl_strategy:
 # Multi-Level RL Integration (Broader RL System)
 rl:
   enabled: true  # Enable RL components
+  fail_fast: false  # If true, abort trades on RL failures; if false, fallback to baseline
+  timeout_ms: 100  # Maximum timeout for RL inference calls (milliseconds)
+  
+  # A/B Testing Configuration
+  ab_testing:
+    enabled: false  # Enable A/B testing to compare RL vs baseline
+    split_ratio: 0.5  # Percentage of trades that use RL (0.5 = 50% RL, 50% baseline)
+    track_results: true  # Track and compare results between RL and baseline groups
   
   # Model directory for all RL components
   model_dir: "./models/rl"

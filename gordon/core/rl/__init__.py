@@ -12,6 +12,8 @@ from .position_sizer import PositionSizeOptimizer
 from .regime_detector import MarketRegimeDetector
 from .portfolio_allocator import PortfolioAllocator
 from .manager import RLManager
+from .performance_monitor import RLPerformanceMonitor
+from .ab_testing import RLABTesting
 
 __all__ = [
     'BaseRLComponent',
@@ -23,5 +25,6 @@ __all__ = [
     'MarketRegimeDetector',
     'PortfolioAllocator',
     'RLManager',
+    'RLPerformanceMonitor',
+    'RLABTesting',
 ]
-

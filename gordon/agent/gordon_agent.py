@@ -52,6 +52,29 @@ class GordonAgent:
         self.risk_manager = RiskManager(event_bus, config_manager, demo_mode=True)
         self.position_manager = PositionManager()
         
+        # Initialize RL Manager for fundamental-level RL integration
+        try:
+            from gordon.core.rl import RLManager
+            from gordon.core.rl.performance_monitor import RLPerformanceMonitor
+            from gordon.core.rl.ab_testing import RLABTesting
+            
+            # Initialize performance monitor and A/B testing
+            self.rl_performance_monitor = RLPerformanceMonitor()
+            self.rl_ab_testing = RLABTesting(config=self.config)
+            
+            self.rl_manager = RLManager(config=self.config)
+            if self.rl_manager.enabled:
+                self.logger._log("🤖 RL Manager initialized - RL integrated at fundamental level")
+                # Note: RL components will be initialized on first use or via explicit initialization
+            else:
+                self.rl_manager = None
+                self.logger._log("RL Manager disabled in config")
+        except Exception as e:
+            self.rl_manager = None
+            self.rl_performance_monitor = None
+            self.rl_ab_testing = None
+            self.logger._log(f"RL Manager not available: {e}")
+        
         # AlgorithmicTrader requires orchestrator - we'll create a simple adapter
         # For now, initialize it with None and set it up later if needed
         # AlgorithmicTrader needs orchestrator for exchange operations, so we'll defer initialization
@@ -340,31 +363,295 @@ Category:"""
 
     @show_progress("Executing trading operation...", "Trading complete")
     async def trade(self, query: str) -> str:
-        """Execute trading operations."""
+        """
+        Execute trading operations with RL-integrated decision making.
+        RL is embedded at the fundamental level for:
+        - Strategy selection
+        - Signal aggregation
+        - Position sizing optimization
+        - Market regime detection
+        - Risk parameter optimization
+        
+        Features:
+        - Performance monitoring for all RL calls
+        - Timeout protection to prevent hanging
+        - A/B testing to compare RL vs baseline
+        - Fail-fast option to disable RL on errors
+        """
+        import uuid
+        import asyncio
+        
+        trade_id = str(uuid.uuid4())[:8]  # Generate unique trade ID
+        symbol = None
+        
         try:
             # Parse trading intent
             trading_params = self._parse_trading_query(query)
-
-            # Check risk management
+            symbol = trading_params.get('symbol', 'BTCUSDT')
+            
+            # Get RL config
+            rl_config = self.config.get('rl', {})
+            fail_fast = rl_config.get('fail_fast', False)
+            timeout_ms = rl_config.get('timeout_ms', 100)  # Default 100ms timeout
+            timeout_seconds = timeout_ms / 1000.0
+            
+            # A/B testing: determine if RL should be used
+            use_rl = True
+            if self.rl_ab_testing:
+                use_rl = self.rl_ab_testing.should_use_rl(trade_id)
+            
+            # Baseline decisions (non-RL)
+            baseline_decisions = {
+                'regime': None,
+                'risk_params': None,
+                'signal_aggregation': None,
+                'position_size_multiplier': 1.0
+            }
+            
+            # ========== RL-ENHANCED DECISION MAKING (with monitoring & timeouts) ==========
+            
+            # 1. Detect market regime using RL
+            market_regime = None
+            market_context = await self._get_market_context(symbol)
+            
+            if use_rl and self.rl_manager and self.rl_manager.enabled and self.rl_manager.regime_detector:
+                try:
+                    price_data = await self._get_price_data(symbol)
+                    
+                    # RL call with timeout and monitoring
+                    regime_result = await self._safe_rl_call(
+                        component='regime_detector',
+                        operation='detect_regime',
+                        call_func=self.rl_manager.detect_regime,
+                        call_args=(market_context, price_data),
+                        timeout=timeout_seconds,
+                        fail_fast=fail_fast
+                    )
+                    
+                    if regime_result:
+                        market_regime = regime_result.get('regime_name')
+                        self.logger._log(f"🤖 RL Detected Market Regime: {market_regime} (Confidence: {regime_result.get('confidence', 0):.2%})")
+                        baseline_decisions['regime'] = market_regime
+                except Exception as e:
+                    self.logger._log(f"RL regime detection failed: {e}")
+                    if fail_fast:
+                        return f"Trade aborted: RL regime detection failed (fail_fast enabled)"
+            
+            # 2. Optimize risk parameters using RL
+            rl_risk = None
+            if use_rl and self.rl_manager and self.rl_manager.enabled and self.rl_manager.risk_optimizer:
+                try:
+                    portfolio_context = await self._get_portfolio_context()
+                    performance_context = await self._get_performance_context()
+                    
+                    # RL call with timeout and monitoring
+                    rl_risk = await self._safe_rl_call(
+                        component='risk_optimizer',
+                        operation='optimize_risk',
+                        call_func=self.rl_manager.optimize_risk,
+                        call_args=(portfolio_context, market_context, performance_context),
+                        timeout=timeout_seconds,
+                        fail_fast=fail_fast
+                    )
+                    
+                    if rl_risk:
+                        self.logger._log(f"🤖 RL Optimized Risk: {rl_risk.get('risk_level_name')} (Risk/Trade: {rl_risk.get('risk_per_trade', 0):.2%})")
+                        trading_params['rl_risk_params'] = rl_risk
+                        baseline_decisions['risk_params'] = rl_risk
+                except Exception as e:
+                    self.logger._log(f"RL risk optimization failed: {e}")
+                    if fail_fast:
+                        return f"Trade aborted: RL risk optimization failed (fail_fast enabled)"
+            
+            # 3. Check risk management (may use RL-optimized parameters)
             if not self.risk_manager.check_trade_allowed(trading_params):
                 return "Trade rejected by risk management"
-
-            # Select strategy
+            
+            # 4. Select strategy (may use RL meta-strategy selection)
             strategy = self.strategy_manager.get_strategy(trading_params.get('strategy'))
             if not strategy:
                 return "No suitable strategy found"
-
-            # Execute trade
+            
+            # 5. Execute strategy and get signal
             signal = await strategy.execute()
-            if signal:
-                result = await self._execute_trade(signal)
-                return f"Trade executed: {result}"
-            else:
+            if not signal:
                 return "No trading signal generated"
-
+            
+            # 6. Aggregate signals if multiple strategies exist (RL-enhanced)
+            aggregated_signal = signal.copy()
+            if use_rl and self.rl_manager and self.rl_manager.enabled and self.rl_manager.signal_aggregator:
+                try:
+                    # Get signals from multiple strategies if available
+                    all_signals = {strategy.name: signal} if hasattr(strategy, 'name') else {'strategy': signal}
+                    
+                    # RL call with timeout and monitoring
+                    aggregated = await self._safe_rl_call(
+                        component='signal_aggregator',
+                        operation='aggregate_signals',
+                        call_func=self.rl_manager.aggregate_signals,
+                        call_args=(all_signals, market_context),
+                        timeout=timeout_seconds,
+                        fail_fast=fail_fast
+                    )
+                    
+                    if aggregated:
+                        aggregated_signal.update(aggregated)
+                        self.logger._log(f"🤖 RL Aggregated Signal: {aggregated.get('action')} (Confidence: {aggregated.get('confidence', 0):.2%})")
+                        baseline_decisions['signal_aggregation'] = aggregated
+                except Exception as e:
+                    self.logger._log(f"RL signal aggregation failed: {e}")
+                    if fail_fast:
+                        return f"Trade aborted: RL signal aggregation failed (fail_fast enabled)"
+            
+            # 7. Optimize position size using RL
+            optimized_size = signal.get('size', self.config.get('base_position_size', 0.01))
+            size_multiplier = 1.0
+            
+            if use_rl and self.rl_manager and self.rl_manager.enabled and self.rl_manager.position_sizer:
+                try:
+                    signal_context = {
+                        'confidence': aggregated_signal.get('confidence', 0.5),
+                        'strength': aggregated_signal.get('strength', 0.5),
+                        'strategy_performance': 0.1,  # Should be calculated from actual performance
+                        'recent_win_rate': 0.6  # Should be calculated from actual win rate
+                    }
+                    portfolio_context = await self._get_portfolio_context()
+                    
+                    # RL call with timeout and monitoring
+                    size_optimization = await self._safe_rl_call(
+                        component='position_sizer',
+                        operation='optimize_position_size',
+                        call_func=self.rl_manager.optimize_position_size,
+                        call_args=(signal_context, market_context, portfolio_context),
+                        timeout=timeout_seconds,
+                        fail_fast=fail_fast
+                    )
+                    
+                    if size_optimization:
+                        base_size = self.config.get('base_position_size', 0.01)
+                        size_multiplier = size_optimization.get('size_multiplier', 1.0)
+                        optimized_size = base_size * size_multiplier
+                        aggregated_signal['size'] = optimized_size
+                        aggregated_signal['rl_size_multiplier'] = size_multiplier
+                        self.logger._log(f"🤖 RL Optimized Position Size: {optimized_size:.4f} (Multiplier: {size_multiplier:.2f}x)")
+                        baseline_decisions['position_size_multiplier'] = size_multiplier
+                except Exception as e:
+                    self.logger._log(f"RL position sizing failed: {e}")
+                    if fail_fast:
+                        return f"Trade aborted: RL position sizing failed (fail_fast enabled)"
+            
+            # Record A/B test decision
+            if self.rl_ab_testing:
+                rl_decision = {
+                    'regime': market_regime,
+                    'risk_params': rl_risk,
+                    'position_size_multiplier': size_multiplier,
+                    'confidence': aggregated_signal.get('confidence', 0.5)
+                }
+                self.rl_ab_testing.record_decision(
+                    trade_id=trade_id,
+                    symbol=symbol,
+                    rl_decision=rl_decision,
+                    baseline_decision=baseline_decisions,
+                    rl_used=use_rl
+                )
+            
+            # 8. Execute trade with RL-optimized parameters
+            result = await self._execute_trade(aggregated_signal)
+            
+            # Build response with RL insights
+            response = f"Trade executed: {result}"
+            if market_regime:
+                response += f"\n📊 Market Regime: {market_regime}"
+            if aggregated_signal.get('rl_size_multiplier'):
+                response += f"\n🤖 RL Position Size Multiplier: {aggregated_signal['rl_size_multiplier']:.2f}x"
+            if use_rl:
+                response += f"\n🤖 RL Group: {'Enabled' if use_rl else 'Disabled'} (A/B Test)"
+            else:
+                response += f"\n📊 Baseline Group: Enabled (A/B Test)"
+            
+            # Log performance summary if available
+            if self.rl_performance_monitor:
+                summary = self.rl_performance_monitor.get_summary()
+                self.logger._log(summary)
+            
+            return response
+            
         except Exception as e:
             self.logger._log(f"Trading failed: {e}")
+            import traceback
+            traceback.print_exc()
             return f"Trading error: {str(e)}"
+    
+    async def _safe_rl_call(
+        self,
+        component: str,
+        operation: str,
+        call_func,
+        call_args: tuple = (),
+        timeout: float = 0.1,
+        fail_fast: bool = False
+    ):
+        """
+        Safely execute an RL call with timeout protection and performance monitoring.
+        
+        Args:
+            component: RL component name (e.g., 'regime_detector')
+            operation: Operation name (e.g., 'detect_regime')
+            call_func: Function to call (must be synchronous or async)
+            call_args: Arguments to pass to call_func
+            timeout: Timeout in seconds
+            fail_fast: Whether to raise exception on failure
+            
+        Returns:
+            Result from RL call or None if failed/timed out
+        """
+        import asyncio
+        import time
+        
+        start_time = time.time()
+        success = False
+        error = None
+        result = None
+        
+        try:
+            # Execute with timeout
+            if asyncio.iscoroutinefunction(call_func):
+                result = await asyncio.wait_for(call_func(*call_args), timeout=timeout)
+            else:
+                # For synchronous functions, run in executor
+                loop = asyncio.get_event_loop()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: call_func(*call_args)),
+                    timeout=timeout
+                )
+            success = True
+            
+        except asyncio.TimeoutError:
+            error = f"Timeout after {timeout*1000:.0f}ms"
+            self.logger.warning(f"RL {component}.{operation} timed out after {timeout*1000:.0f}ms")
+            if fail_fast:
+                raise TimeoutError(error)
+                
+        except Exception as e:
+            error = str(e)
+            self.logger.warning(f"RL {component}.{operation} failed: {e}")
+            if fail_fast:
+                raise
+        
+        finally:
+            # Record performance metrics
+            latency_ms = (time.time() - start_time) * 1000
+            if self.rl_performance_monitor:
+                self.rl_performance_monitor.record_call(
+                    component_name=component,
+                    operation=operation,
+                    latency_ms=latency_ms,
+                    success=success,
+                    error=error
+                )
+        
+        return result
 
     # ========== HYBRID OPERATIONS ==========
 
@@ -1826,6 +2113,147 @@ Win Rate: {results.get('win_rate', 0):.2f}%
             params['action'] = 'SELL'
 
         return params
+    
+    async def _get_market_context(self, symbol: str) -> Dict[str, Any]:
+        """Get market context for RL components."""
+        try:
+            # Try to get actual market data
+            exchange = self.exchanges.get('binance') or (list(self.exchanges.values())[0] if self.exchanges else None)
+            if exchange:
+                # Get recent price data
+                ticker = await exchange.get_ticker(symbol)
+                # Get 24h price change
+                price_change_24h = ticker.get('change24h', 0.0) if ticker else 0.0
+                # Get volume ratio (simplified)
+                volume_ratio = 1.0  # Should be calculated from historical volume
+                
+                return {
+                    'volatility': abs(price_change_24h) if price_change_24h else 0.02,
+                    'trend': 1.0 if price_change_24h > 0 else -1.0 if price_change_24h < 0 else 0.0,
+                    'volume_ratio': volume_ratio,
+                    'price_change_24h': price_change_24h,
+                    'rsi': 50.0,  # Should be calculated from actual indicators
+                    'macd': 0.0,  # Should be calculated
+                    'bb_position': 0.5,  # Should be calculated
+                    'spread': 0.001,
+                    'liquidity': 1.0,
+                    'regime': 0.5,
+                    'fear_greed_index': 50.0,
+                    'correlation': 0.0
+                }
+        except Exception as e:
+            self.logger._log(f"Could not get market context: {e}")
+        
+        # Fallback to default values
+        return {
+            'volatility': 0.02,
+            'trend': 0.0,
+            'volume_ratio': 1.0,
+            'price_change_24h': 0.0,
+            'rsi': 50.0,
+            'macd': 0.0,
+            'bb_position': 0.5,
+            'spread': 0.001,
+            'liquidity': 1.0,
+            'regime': 0.5,
+            'fear_greed_index': 50.0,
+            'correlation': 0.0
+        }
+    
+    async def _get_price_data(self, symbol: str) -> Dict[str, Any]:
+        """Get price data for regime detection."""
+        try:
+            exchange = self.exchanges.get('binance') or (list(self.exchanges.values())[0] if self.exchanges else None)
+            if exchange:
+                # Get recent OHLCV data
+                # Simplified - should get actual historical data
+                ticker = await exchange.get_ticker(symbol)
+                current_price = ticker.get('last', 0.0) if ticker else 0.0
+                
+                return {
+                    'price_change_1h': 0.001,  # Should be calculated
+                    'price_change_24h': ticker.get('change24h', 0.0) if ticker else 0.0,
+                    'price_change_7d': 0.05,  # Should be calculated
+                    'high_low_ratio': 1.02  # Should be calculated
+                }
+        except Exception as e:
+            self.logger._log(f"Could not get price data: {e}")
+        
+        # Fallback
+        return {
+            'price_change_1h': 0.001,
+            'price_change_24h': 0.0,
+            'price_change_7d': 0.05,
+            'high_low_ratio': 1.02
+        }
+    
+    async def _get_portfolio_context(self) -> Dict[str, Any]:
+        """Get portfolio context for RL components."""
+        try:
+            # Get positions from position manager
+            positions = self.position_manager.get_all_positions() if hasattr(self.position_manager, 'get_all_positions') else []
+            
+            # Get balance from risk manager
+            risk_metrics = self.risk_manager.get_risk_metrics() if hasattr(self.risk_manager, 'get_risk_metrics') else {}
+            
+            balance = risk_metrics.get('current_balance', 10000.0)
+            drawdown = risk_metrics.get('current_drawdown', 0.0)
+            position_count = len(positions) if positions else 0
+            
+            return {
+                'balance': balance,
+                'drawdown': drawdown,
+                'drawdown_pct': drawdown / balance if balance > 0 else 0.0,
+                'leverage': risk_metrics.get('max_leverage', 1.0),
+                'position_count': position_count,
+                'margin_used': 0.0,  # Should be calculated
+                'available_balance': balance * 0.5,  # Simplified
+                'correlation': 0.3,  # Should be calculated
+                'max_position_size': risk_metrics.get('max_position_size', 0.1)
+            }
+        except Exception as e:
+            self.logger._log(f"Could not get portfolio context: {e}")
+        
+        # Fallback
+        return {
+            'balance': 10000.0,
+            'drawdown': 0.0,
+            'drawdown_pct': 0.0,
+            'leverage': 1.0,
+            'position_count': 0,
+            'margin_used': 0.0,
+            'available_balance': 5000.0,
+            'correlation': 0.3,
+            'max_position_size': 0.1
+        }
+    
+    async def _get_performance_context(self) -> Dict[str, Any]:
+        """Get performance context for RL components."""
+        try:
+            risk_metrics = self.risk_manager.get_risk_metrics() if hasattr(self.risk_manager, 'get_risk_metrics') else {}
+            
+            return {
+                'win_rate': 0.5,  # Should be calculated from actual trades
+                'sharpe_ratio': risk_metrics.get('sharpe_ratio', 0.0),
+                'total_pnl': risk_metrics.get('total_pnl', 0.0),
+                'total_pnl_pct': risk_metrics.get('total_pnl_pct', 0.0),
+                'daily_pnl': risk_metrics.get('daily_pnl', 0.0),
+                'daily_pnl_pct': risk_metrics.get('daily_pnl_pct', 0.0),
+                'consecutive_losses': 0  # Should be tracked
+            }
+        except Exception as e:
+            self.logger._log(f"Could not get performance context: {e}")
+        
+        # Fallback
+        return {
+            'win_rate': 0.5,
+            'sharpe_ratio': 0.0,
+            'total_pnl': 0.0,
+            'total_pnl_pct': 0.0,
+            'daily_pnl': 0.0,
+            'daily_pnl_pct': 0.0,
+            'consecutive_losses': 0
+        }
 
     def _parse_backtest_query(self, query: str) -> Dict[str, Any]:
         """Parse backtest parameters from query."""
