@@ -34,6 +34,18 @@ from .rrs_strategy import RRSStrategy
 # Day 45 Enhanced Strategies
 from .liquidation_hunter_strategy import LiquidationHunterStrategy
 
+# Day 48 Easy Entry Strategy
+from .easy_entry_strategy import EasyEntryStrategy
+
+# Day 51 Quick Buy/Sell Strategy
+from .quick_buysell_strategy import QuickBuySellStrategy
+
+# Day 49 MA Reversal Strategy
+from .ma_reversal_strategy import MAReversalStrategy
+
+# Day 50 Enhanced Supply/Demand Strategy
+from .enhanced_sd_strategy import EnhancedSupplyDemandStrategy
+
 # Import all strategy classes for easy access
 __all__ = [
     'BaseStrategy',
@@ -61,4 +73,12 @@ __all__ = [
     'RRSStrategy',
     # Day 45 Enhanced Strategies
     'LiquidationHunterStrategy',
+    # Day 48 Easy Entry Strategy
+    'EasyEntryStrategy',
+    # Day 51 Quick Buy/Sell Strategy
+    'QuickBuySellStrategy',
+    # Day 49 MA Reversal Strategy
+    'MAReversalStrategy',
+    # Day 50 Enhanced Supply/Demand Strategy
+    'EnhancedSupplyDemandStrategy',
 ]

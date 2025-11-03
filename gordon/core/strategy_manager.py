@@ -2,7 +2,7 @@
 Strategy Manager (Refactored)
 ==============================
 Orchestrates trading strategies and manages their execution.
-All strategy implementations have been moved to the strategies/ folder.
+Enhanced with Phase 1 lifecycle management and performance tracking.
 """
 
 import asyncio
@@ -17,11 +17,15 @@ from .config import StrategyConfigs
 from .caching import CacheManager
 from .strategies.base import BaseStrategy
 
+# Import enhanced strategy engine
+from .strategy_engine import EnhancedStrategyEngine, StrategyInstance, StrategyStatus
+
 
 class StrategyManager:
     """
     Manages and orchestrates trading strategies.
     Refactored to focus only on orchestration, with strategies in separate modules.
+    Enhanced with Phase 1 lifecycle management.
     """
 
     def __init__(self, event_bus: EventBus, config: Optional[Dict] = None):
@@ -39,7 +43,10 @@ class StrategyManager:
         self.config = config or {}
         self.configs = StrategyConfigs(self.config.get('config_file'))
 
-        # Strategy registry
+        # Enhanced strategy engine (Phase 1)
+        self.enhanced_engine = EnhancedStrategyEngine(event_bus, config)
+
+        # Legacy strategy registry (for backward compatibility)
         self.strategies: Dict[str, BaseStrategy] = {}
         self.active_strategies: List[str] = []
 
@@ -58,6 +65,18 @@ class StrategyManager:
 
         # Subscribe to events
         self._setup_event_handlers()
+    
+    def get_all_strategies(self) -> Dict[str, BaseStrategy]:
+        """Get all registered strategies (from enhanced engine)."""
+        return self.enhanced_engine.get_all_strategies()
+    
+    def get_strategy_status(self, name: str) -> str:
+        """Get strategy status (from enhanced engine)."""
+        return self.enhanced_engine.get_strategy_status(name)
+    
+    def get_strategy_metrics(self, name: str) -> Dict[str, Any]:
+        """Get strategy performance metrics (from enhanced engine)."""
+        return self.enhanced_engine.get_strategy_metrics(name)
 
     def _register_built_in_strategies(self):
         """Register all built-in strategies from the strategies folder."""
@@ -85,6 +104,7 @@ class StrategyManager:
                         # Create instance and register
                         strategy_instance = obj()
                         strategy_name = module_name.replace('_strategy', '').replace('day', 'd')
+                        # Register in both enhanced engine and legacy registry
                         self.register_strategy(strategy_name, strategy_instance)
                         self.logger.info(f"Registered strategy: {strategy_name} ({name})")
                         break
@@ -139,14 +159,16 @@ class StrategyManager:
     def register_strategy(self, name: str, strategy: BaseStrategy):
         """
         Register a strategy.
+        Delegates to enhanced engine for better tracking.
 
         Args:
             name: Strategy name
             strategy: Strategy instance
         """
-        if not isinstance(strategy, BaseStrategy):
-            raise ValueError(f"Strategy must inherit from BaseStrategy")
-
+        # Register in enhanced engine
+        self.enhanced_engine.register_strategy(name, strategy, enabled=True)
+        
+        # Also register in legacy registry for backward compatibility
         self.strategies[name] = strategy
         self.logger.info(f"Strategy registered: {name}")
 
@@ -168,80 +190,33 @@ class StrategyManager:
     async def start_strategy(self, name: str, config: Optional[Dict] = None):
         """
         Start a strategy.
+        Delegates to enhanced engine.
 
         Args:
             name: Strategy name
             config: Optional configuration override
         """
-        if name not in self.strategies:
-            raise ValueError(f"Strategy {name} not registered")
-
-        if name in self.active_strategies:
-            self.logger.warning(f"Strategy {name} already running")
-            return
-
-        strategy = self.strategies[name]
-
-        # Get configuration
-        strategy_config = config or self.configs.get(name.replace('d', 'day'))
-
-        # Initialize strategy
-        await strategy.initialize(strategy_config)
-
-        # Set exchange connections
-        for exchange, connection in self.exchange_connections.items():
-            strategy.set_exchange_connection(exchange, connection)
-
-        # Create execution task
-        task = asyncio.create_task(self._run_strategy(name))
-        self.execution_tasks[name] = task
-
-        # Add to active strategies
-        self.active_strategies.append(name)
-
-        self.logger.info(f"Strategy started: {name}")
-
-        # Emit event
-        await self.event_bus.emit("strategy_started", {
-            "strategy": name,
-            "config": strategy_config,
-            "timestamp": datetime.now().isoformat()
-        })
+        # Use enhanced engine
+        await self.enhanced_engine.start_strategy(name, config)
+        
+        # Also update legacy registry
+        if name not in self.active_strategies:
+            self.active_strategies.append(name)
 
     async def stop_strategy(self, name: str):
         """
         Stop a strategy.
+        Delegates to enhanced engine.
 
         Args:
             name: Strategy name
         """
-        if name not in self.active_strategies:
-            self.logger.warning(f"Strategy {name} not running")
-            return
-
-        # Cancel execution task
-        if name in self.execution_tasks:
-            self.execution_tasks[name].cancel()
-            try:
-                await self.execution_tasks[name]
-            except asyncio.CancelledError:
-                pass
-            del self.execution_tasks[name]
-
-        # Remove from active strategies
-        self.active_strategies.remove(name)
-
-        # Cleanup strategy
-        strategy = self.strategies[name]
-        await strategy.cleanup()
-
-        self.logger.info(f"Strategy stopped: {name}")
-
-        # Emit event
-        await self.event_bus.emit("strategy_stopped", {
-            "strategy": name,
-            "timestamp": datetime.now().isoformat()
-        })
+        # Use enhanced engine
+        await self.enhanced_engine.stop_strategy(name)
+        
+        # Also update legacy registry
+        if name in self.active_strategies:
+            self.active_strategies.remove(name)
 
     async def _run_strategy(self, name: str):
         """

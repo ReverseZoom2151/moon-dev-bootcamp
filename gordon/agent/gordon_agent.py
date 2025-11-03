@@ -93,8 +93,17 @@ class GordonAgent:
         """
         self.logger._log(f"Processing query: {query}")
 
-        # Determine query type
-        query_type = self._classify_query(query)
+        # Determine query type - try LLM first for semantic understanding
+        try:
+            query_type = await self._classify_query_llm(query)
+            if not query_type or query_type == "general":
+                # If LLM says general or failed, fall back to keyword matching
+                query_type = self._classify_query(query)
+            else:
+                self.logger._log(f"LLM classified query as: {query_type}")
+        except Exception as e:
+            self.logger._log(f"LLM classification failed, using keyword matching: {e}")
+            query_type = self._classify_query(query)
 
         if query_type == "research":
             return await self.research(query)
@@ -118,15 +127,100 @@ class GordonAgent:
             return await self.handle_liquidation_hunter(query)
         elif query_type == "orderbook_analysis":
             return await self.handle_orderbook_analysis(query)
+        elif query_type == "market_dashboard":
+            return await self.handle_market_dashboard(query)
         elif query_type == "conversation":
             return await self.handle_conversation_commands(query)
         elif query_type == "system":
             return await self.handle_system_commands(query)
+        elif query_type == "position_management":
+            return await self.handle_position_management(query)
+        elif query_type == "ma_reversal":
+            return await self.handle_ma_reversal(query)
+        elif query_type == "enhanced_sd":
+            return await self.handle_enhanced_sd(query)
+        elif query_type == "quick_buysell":
+            return await self.handle_quick_buysell(query)
         else:
             return await self.general_assistance(query)
 
+    async def _classify_query_llm(self, query: str) -> str:
+        """Use LLM to classify query type with semantic understanding."""
+        try:
+            from .model import call_llm
+            
+            classification_prompt = """You are a command classifier for Gordon, a trading and research agent.
+
+Analyze the user's query and classify it into ONE of these categories based on intent:
+
+- "research": Financial research, company analysis, SEC filings, earnings
+- "trading": Execute trades, run strategies (RSI, SMA, VWAP), buy/sell orders
+- "hybrid": Both research and trading combined
+- "backtest": Historical testing, strategy performance, optimization
+- "whale_tracking": Track large positions, whales, institutional traders, multi-address tracking, liquidation risk, aggregate positions
+- "position_sizing": Calculate position sizes, how much to buy, leverage calculations
+- "ml_indicators": ML indicator evaluation, discovery, ranking, top indicators
+- "rrs_analysis": Relative Rotation Strength, RRS rankings, RRS signals
+- "trader_intelligence": Early buyers, trader analysis, accounts to follow, institutional traders
+- "liquidation_hunter": Liquidation analysis, liquidation cascades, Moon Dev API data
+- "orderbook_analysis": Order book depth, whale orders, spread analysis, market depth
+- "market_dashboard": Trending tokens, new listings, volume leaders, funding rates, market overview
+- "position_management": Close positions based on PnL, chunk closing, easy entry, track positions, check PnL
+- "ma_reversal": MA reversal strategy, dual moving average crossover, 2x MA reversal
+- "enhanced_sd": Enhanced supply/demand zones, SD zone strategy, zone trading
+- "quick_buysell": Quick buy/sell execution, rapid trading, instant execution, file monitoring
+- "conversation": Search conversations, export conversations, conversation analytics, list users
+- "system": System status, config, risk settings, help
+- "general": General questions, clarification, or unclear intent
+
+Respond with ONLY the category name, nothing else.
+
+User Query: "{query}"
+
+Category:"""
+            
+            import asyncio
+            loop = asyncio.get_event_loop()
+            llm_response = await loop.run_in_executor(
+                None,
+                lambda: call_llm(
+                    prompt=query,
+                    system_prompt=classification_prompt.format(query=query),
+                    model="gpt-4o-mini"
+                )
+            )
+            
+            # Extract category from LLM response
+            response_text = str(llm_response.content) if hasattr(llm_response, 'content') else str(llm_response)
+            category = response_text.strip().lower()
+            
+            # Validate category
+            valid_categories = [
+                "research", "trading", "hybrid", "backtest", "whale_tracking",
+                "position_sizing", "ml_indicators", "rrs_analysis", "trader_intelligence",
+                "liquidation_hunter", "orderbook_analysis", "market_dashboard",
+                "position_management", "ma_reversal", "enhanced_sd", "quick_buysell",
+                "conversation", "system", "general"
+            ]
+            
+            if category in valid_categories:
+                return category
+            
+            # Fallback: check if category is mentioned in response
+            for valid_cat in valid_categories:
+                if valid_cat in category:
+                    return valid_cat
+            
+            return "general"
+            
+        except Exception as e:
+            self.logger._log(f"LLM classification failed: {e}, falling back to keyword matching")
+            return None  # Signal to fall back to keyword matching
+
     def _classify_query(self, query: str) -> str:
-        """Classify the type of query."""
+        """Classify the type of query using LLM first, then keyword fallback."""
+        # Try LLM classification first (async, but we'll handle sync fallback)
+        # For now, use hybrid approach: keyword matching for speed, LLM for ambiguous cases
         query_lower = query.lower()
 
         # Keywords for different query types
@@ -136,7 +230,9 @@ class GordonAgent:
                           'strategy', 'rsi', 'sma', 'vwap', 'bollinger']
         backtest_keywords = ['backtest', 'historical', 'test strategy', 'performance']
         whale_keywords = ['whale', 'large position', 'track whale', 'whale position', 
-                         'institutional', 'big holder', 'whale tracker']
+                         'institutional', 'big holder', 'whale tracker', 'multi-address',
+                         'multiple whale', 'aggregate position', 'liquidation risk',
+                         'distance to liquidation', 'positions closest to liquidation']
         sizing_keywords = ['position size', 'calculate size', 'size position', 'position sizing',
                           'how much', 'how many', 'position amount', 'leverage']
         ml_keywords = ['ml indicator', 'discover indicator', 'evaluate indicator', 'top indicator',
@@ -151,6 +247,24 @@ class GordonAgent:
                                'whale positions', 'liquidation data', 'moondev']
         orderbook_keywords = ['order book', 'orderbook', 'whale orders', 'order book depth', 'spread analysis',
                              'market depth', 'bid ask']
+        market_dashboard_keywords = ['market dashboard', 'trending tokens', 'new listings', 'volume leaders',
+                                    'trending', 'new tokens', 'volume', 'funding rates', 'market tracker',
+                                    'gems', 'possible gems', 'consistent trending']
+        # Day 48: Position Management
+        position_mgmt_keywords = ['pnl close', 'close position pnl', 'close based on pnl', 'take profit', 'stop loss',
+                                 'chunk close', 'close in chunks', 'close gradually', 'sell in chunks',
+                                 'easy entry', 'average in', 'accumulate position', 'build position',
+                                 'track position', 'watch position', 'monitor position', 'start tracking',
+                                 'check pnl', 'pnl status', 'profit loss status', 'current pnl']
+        # Day 49: MA Reversal
+        ma_reversal_keywords = ['ma reversal', '2x ma', 'dual moving average', 'ma crossover reversal',
+                               'reversal strategy', 'run ma reversal', 'execute ma reversal']
+        # Day 50: Enhanced Supply/Demand
+        enhanced_sd_keywords = ['enhanced supply demand', 'enhanced sd', 'supply demand zone strategy',
+                               'sd zone strategy', 'zone strategy', 'enhanced zone']
+        # Day 51: Quick Buy/Sell
+        quick_buysell_keywords = ['quick buy', 'quick sell', 'rapid buy', 'rapid sell', 'instant buy', 'instant sell',
+                                 'quick execution', 'qbs', 'quick-buy', 'quick-sell', 'file monitor', 'token file']
 
         has_research = any(kw in query_lower for kw in research_keywords)
         has_trading = any(kw in query_lower for kw in trading_keywords)
@@ -164,9 +278,22 @@ class GordonAgent:
         has_system = any(kw in query_lower for kw in system_keywords)
         has_liquidation = any(kw in query_lower for kw in liquidation_keywords)
         has_orderbook = any(kw in query_lower for kw in orderbook_keywords)
+        has_market_dashboard = any(kw in query_lower for kw in market_dashboard_keywords)
+        has_position_mgmt = any(kw in query_lower for kw in position_mgmt_keywords)
+        has_ma_reversal = any(kw in query_lower for kw in ma_reversal_keywords)
+        has_enhanced_sd = any(kw in query_lower for kw in enhanced_sd_keywords)
+        has_quick_buysell = any(kw in query_lower for kw in quick_buysell_keywords)
 
         if has_backtest:
             return "backtest"
+        elif has_quick_buysell:
+            return "quick_buysell"
+        elif has_position_mgmt:
+            return "position_management"
+        elif has_ma_reversal:
+            return "ma_reversal"
+        elif has_enhanced_sd:
+            return "enhanced_sd"
         elif has_whale:
             return "whale_tracking"
         elif has_sizing:
@@ -181,6 +308,8 @@ class GordonAgent:
             return "liquidation_hunter"
         elif has_orderbook:
             return "orderbook_analysis"
+        elif has_market_dashboard:
+            return "market_dashboard"
         elif has_conversation:
             return "conversation"
         elif has_system:
@@ -310,16 +439,18 @@ Consider waiting for better entry conditions.
             self.logger._log(f"Hybrid operation failed: {e}")
             return f"Analysis error: {str(e)}"
 
-    # ========== WHALE TRACKING (Day 44) ==========
+    # ========== WHALE TRACKING (Day 44 + Day 46) ==========
 
     @show_progress("Tracking whale positions...", "Whale tracking complete")
     async def handle_whale_tracking(self, query: str) -> str:
-        """Handle whale tracking queries in natural language."""
+        """Handle whale tracking queries in natural language. Enhanced with Day 46 features."""
         try:
             from gordon.core.utilities import WhaleTrackingManager
             from gordon.exchanges.factory import ExchangeFactory
             import yaml
+            import pandas as pd
             from pathlib import Path
+            import re
             
             # Get config
             config_path = Path(__file__).parent.parent.parent / 'config.yaml'
@@ -348,37 +479,133 @@ Consider waiting for better entry conditions.
             
             # Extract minimum value from query
             min_value = None
-            import re
             value_matches = re.findall(r'\$?(\d+(?:,\d{3})*(?:\.\d+)?)', query)
             if value_matches:
                 # Convert to float (remove commas)
                 min_value = float(value_matches[-1].replace(',', ''))
             
-            # Track whales
-            results = await manager.track_whales(symbol=symbol, min_value_usd=min_value)
+            query_lower = query.lower()
             
-            # Generate response
-            report = manager.get_whale_summary_report(results)
-            
-            response = f"""
-🐋 **Whale Position Tracking Results**
+            # Day 46: Multi-address tracking
+            if any(kw in query_lower for kw in ['multi-address', 'multiple whale', 'multiple address', 'track multiple']):
+                results = await manager.track_multi_address_whales(
+                    symbol=symbol,
+                    min_value_usd=min_value,
+                    export_csv=True
+                )
+                
+                if results['positions'].empty:
+                    return "❌ No positions found for tracked addresses. Make sure you have whale addresses configured in whale_addresses.txt"
+                
+                response = f"""
+🐋🐋 MULTI-ADDRESS WHALE TRACKING RESULTS
 
-{report}
+✅ Found {len(results['positions'])} positions from {len(results['positions']['address'].unique())} addresses
 
 """
+                # Add aggregated report
+                agg_report = manager.get_aggregated_positions_report(results['positions'])
+                response += agg_report
+                
+                # Add liquidation risk if available
+                if not results['liquidation_risk'].empty:
+                    liq_report = await manager.get_liquidation_risk_report(
+                        results['positions'],
+                        threshold_pct=config.get('whale_tracking', {}).get('multi_address_tracking', {}).get('liquidation_risk_threshold', 3.0)
+                    )
+                    response += f"\n\n{liq_report}"
+                
+                # Show saved files
+                saved_files = results.get('saved_files', {})
+                if saved_files:
+                    response += "\n\n💾 CSV Files Saved:"
+                    for key, path in saved_files.items():
+                        if path:
+                            response += f"\n   • {key}: {path}"
+                
+                return response
             
-            # Add top positions if available
-            if not results['top_positions'].empty:
-                top_df = results['top_positions'].head(10)
-                response += "**Top Positions:**\n"
-                for _, row in top_df.iterrows():
-                    response += f"- {row['symbol']}: ${row['position_value_usd']:,.2f} ({row['pnl_percent']:+.2f}%) - {row['whale_tier']}\n"
+            # Day 46: Liquidation risk analysis
+            elif any(kw in query_lower for kw in ['liquidation risk', 'distance to liquidation', 'closest to liquidation', 'liq risk']):
+                # Get positions first
+                results = await manager.track_multi_address_whales(
+                    symbol=symbol,
+                    export_csv=False
+                )
+                
+                positions_df = results.get('positions', pd.DataFrame())
+                if positions_df.empty:
+                    # Fallback to single tracking
+                    single_results = await manager.track_whales(symbol=symbol, min_value_usd=min_value)
+                    positions_df = single_results.get('whale_positions', pd.DataFrame())
+                
+                if positions_df.empty:
+                    return "❌ No positions found for liquidation risk analysis"
+                
+                # Extract threshold from query
+                threshold = 3.0
+                threshold_matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', query)
+                if threshold_matches:
+                    threshold = float(threshold_matches[-1])
+                
+                report = await manager.get_liquidation_risk_report(
+                    positions_df,
+                    threshold_pct=threshold,
+                    top_n=20
+                )
+                
+                return f"""
+💥 LIQUIDATION RISK ANALYSIS
+
+{report}
+"""
             
-            return response
+            # Day 46: Aggregated positions
+            elif any(kw in query_lower for kw in ['aggregate', 'aggregated', 'group by coin', 'positions by coin']):
+                results = await manager.track_multi_address_whales(
+                    symbol=symbol,
+                    export_csv=False
+                )
+                
+                positions_df = results.get('positions', pd.DataFrame())
+                if positions_df.empty:
+                    single_results = await manager.track_whales(symbol=symbol, min_value_usd=min_value)
+                    positions_df = single_results.get('whale_positions', pd.DataFrame())
+                
+                if positions_df.empty:
+                    return "❌ No positions found for aggregation"
+                
+                report = manager.get_aggregated_positions_report(positions_df)
+                
+                return f"""
+📊 AGGREGATED POSITIONS REPORT
+
+{report}
+"""
+            
+            # Standard whale tracking (Day 44)
+            else:
+                results = await manager.track_whales(symbol=symbol, min_value_usd=min_value)
+                
+                # Generate response
+                report = manager.get_whale_summary_report(results)
+                
+                response = f"""
+🐋 WHALE POSITION TRACKING
+
+{report}
+"""
+                
+                if not results['top_positions'].empty:
+                    response += "\n📊 Top Positions:\n"
+                    response += results['top_positions'][['symbol', 'position_value_usd', 'pnl_percent', 'whale_tier']].head(10).to_string(index=False)
+                
+                return response
             
         except Exception as e:
-            self.logger._log(f"Whale tracking failed: {e}")
-            return f"Whale tracking error: {str(e)}"
+            import traceback
+            traceback.print_exc()
+            return f"❌ Whale tracking error: {str(e)}"
 
     # ========== POSITION SIZING (Day 44) ==========
 
@@ -1175,6 +1402,269 @@ Examples:
             self.logger._log(f"Order book analysis failed: {e}")
             return f"Order book analysis error: {str(e)}"
 
+    # ========== MARKET DASHBOARD (Day 47) ==========
+
+    @show_progress("Fetching market data...", "Complete")
+    async def handle_market_dashboard(self, query: str) -> str:
+        """
+        Handle market dashboard queries (Day 47).
+        
+        Supports:
+        - Trending tokens
+        - New listings
+        - Volume leaders
+        - Funding rates (Bitfinex)
+        - Market dashboard full analysis
+        """
+        query_lower = query.lower()
+        
+        # Extract exchange name
+        exchange = 'binance'  # default
+        if 'bitfinex' in query_lower:
+            exchange = 'bitfinex'
+        elif 'binance' in query_lower:
+            exchange = 'binance'
+        
+        try:
+            from gordon.market import MarketDashboard, FundingRateAnalyzer
+            from gordon.exchanges.factory import ExchangeFactory
+            import yaml
+            from pathlib import Path
+            
+            config_path = Path(__file__).parent.parent.parent / 'config.yaml'
+            config = {}
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = yaml.safe_load(f)
+            
+            exchange_config = config.get('exchanges', {}).get(exchange, {})
+            exchange_adapter = ExchangeFactory.create_exchange(
+                exchange,
+                exchange_config,
+                event_bus=None
+            )
+            
+            await exchange_adapter.initialize()
+            
+            market_config = config.get('market_dashboard', {}).get(exchange, {})
+            
+            # Determine what to fetch based on query
+            if 'trending' in query_lower or 'trending tokens' in query_lower:
+                dashboard = MarketDashboard(
+                    exchange_adapter=exchange_adapter,
+                    exchange_name=exchange,
+                    config=market_config
+                )
+                trending_df = await dashboard.market_client.fetch_trending_tokens()
+                
+                if not trending_df.empty:
+                    top_5 = trending_df.head(5)
+                    response = f"🚀 Top 5 Trending Tokens on {exchange.upper()}:\n"
+                    for i, (_, row) in enumerate(top_5.iterrows(), 1):
+                        symbol = row.get('symbol', 'N/A')
+                        change = row.get('price24hChangePercent', 0)
+                        volume = row.get('volume24hUSD', 0)
+                        response += f"{i}. {symbol}: {change:+.2f}% (${volume:,.0f} volume)\n"
+                    return response
+                else:
+                    return f"❌ No trending tokens found on {exchange.upper()}"
+            
+            elif 'new listing' in query_lower or 'new token' in query_lower:
+                dashboard = MarketDashboard(
+                    exchange_adapter=exchange_adapter,
+                    exchange_name=exchange,
+                    config=market_config
+                )
+                listings_df = await dashboard.market_client.fetch_new_listings()
+                
+                if not listings_df.empty:
+                    top_5 = listings_df.head(5)
+                    response = f"🌟 Top 5 New Listings on {exchange.upper()}:\n"
+                    for i, (_, row) in enumerate(top_5.iterrows(), 1):
+                        symbol = row.get('symbol', 'N/A')
+                        volume = row.get('volume24hUSD', 0)
+                        response += f"{i}. {symbol}: ${volume:,.0f} volume\n"
+                    return response
+                else:
+                    return f"❌ No new listings found on {exchange.upper()}"
+            
+            elif 'volume' in query_lower and 'leader' in query_lower:
+                dashboard = MarketDashboard(
+                    exchange_adapter=exchange_adapter,
+                    exchange_name=exchange,
+                    config=market_config
+                )
+                volume_df = await dashboard.market_client.fetch_high_volume_tokens()
+                
+                if not volume_df.empty:
+                    top_5 = volume_df.head(5)
+                    response = f"📊 Top 5 Volume Leaders on {exchange.upper()}:\n"
+                    for i, (_, row) in enumerate(top_5.iterrows(), 1):
+                        symbol = row.get('symbol', 'N/A')
+                        volume = row.get('volume24hUSD', 0)
+                        response += f"{i}. {symbol}: ${volume:,.0f}\n"
+                    return response
+                else:
+                    return f"❌ No volume data found on {exchange.upper()}"
+            
+            elif 'funding rate' in query_lower and exchange == 'bitfinex':
+                analyzer = FundingRateAnalyzer(
+                    exchange_adapter=exchange_adapter,
+                    config=market_config
+                )
+                funding_df = await analyzer.fetch_funding_rates()
+                
+                if not funding_df.empty:
+                    arbitrage_df = analyzer.analyze_arbitrage_opportunities(funding_df)
+                    if not arbitrage_df.empty:
+                        top_5 = arbitrage_df.head(5)
+                        response = f"💰 Top 5 Funding Rate Opportunities on Bitfinex:\n"
+                        for i, (_, row) in enumerate(top_5.iterrows(), 1):
+                            symbol = row.get('base_symbol', 'N/A')
+                            rate = row.get('funding_rate', 0)
+                            response += f"{i}. {symbol}: {rate:+.4f}%\n"
+                        return response
+                    else:
+                        return "❌ No high funding rate opportunities found"
+                else:
+                    return "❌ No funding rate data available"
+            
+            else:
+                # Full dashboard analysis
+                dashboard = MarketDashboard(
+                    exchange_adapter=exchange_adapter,
+                    exchange_name=exchange,
+                    config=market_config
+                )
+                results = await dashboard.run_full_analysis(export_csv=False)
+                summary = dashboard.get_summary_report(results)
+                return summary
+        
+        except Exception as e:
+            self.logger._log(f"Market dashboard analysis failed: {e}")
+            return f"Market dashboard error: {str(e)}"
+
+    # ========== QUICK BUY/SELL (Day 51) ==========
+
+    @show_progress("Processing quick buy/sell request...", "Complete")
+    async def handle_quick_buysell(self, query: str) -> str:
+        """Handle Day 51 Quick Buy/Sell queries in natural language."""
+        try:
+            import yaml
+            from pathlib import Path
+            import re
+            from gordon.exchanges.factory import ExchangeFactory
+            
+            config_path = Path(__file__).parent.parent.parent / 'config.yaml'
+            config = {}
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = yaml.safe_load(f)
+            
+            query_lower = query.lower()
+            
+            # Extract symbol
+            symbol = self._extract_symbol(query)
+            
+            # Extract USD amount
+            numbers = re.findall(r'\$?(\d+(?:,\d{3})*(?:\.\d+)?)', query)
+            usd_amount = float(numbers[0].replace(',', '')) if numbers else None
+            
+            # Get exchange adapter
+            qbs_config = config.get('quick_buysell', {})
+            exchange_name = qbs_config.get('exchange', 'binance')
+            exchange_config = config.get('exchanges', {}).get(exchange_name, {})
+            exchange_adapter = ExchangeFactory.create_exchange(
+                exchange_name,
+                exchange_config,
+                event_bus=None
+            )
+            await exchange_adapter.initialize()
+            
+            from gordon.core.strategies import QuickBuySellStrategy
+            strategy = QuickBuySellStrategy(
+                exchange_adapter=exchange_adapter,
+                config=qbs_config
+            )
+            
+            # Determine action
+            if any(kw in query_lower for kw in ['buy', 'purchase', 'acquire']):
+                # Quick buy
+                if not symbol:
+                    return "Please specify a symbol. Example: 'Quick buy BTCUSDT for $10'"
+                
+                amount = usd_amount or qbs_config.get('usd_size', 10.0)
+                await strategy.quick_buy_manual(symbol, amount)
+                
+                return f"✅ Quick buy executed: {symbol} for ${amount:.2f}"
+            
+            elif any(kw in query_lower for kw in ['sell', 'close', 'exit']):
+                # Quick sell
+                if not symbol:
+                    return "Please specify a symbol. Example: 'Quick sell BTCUSDT'"
+                
+                await strategy.quick_sell_manual(symbol)
+                
+                return f"✅ Quick sell executed: {symbol}"
+            
+            elif any(kw in query_lower for kw in ['monitor', 'watch', 'start', 'file']):
+                # Start monitoring
+                await strategy.initialize(qbs_config)
+                await strategy.start_monitoring()
+                
+                file_path = qbs_config.get('token_file_path', './token_addresses.txt')
+                return f"""
+✅ Quick Buy/Sell monitor started!
+
+📁 Monitoring file: {file_path}
+
+To buy: Add token symbol to file (e.g., "BTCUSDT")
+To sell: Add token symbol + 'x' to file (e.g., "BTCUSDT x")
+
+The monitor will execute trades instantly when tokens are added.
+Press Ctrl+C to stop monitoring.
+"""
+            
+            elif any(kw in query_lower for kw in ['add', 'write', 'append']):
+                # Add to file
+                if not symbol:
+                    return "Please specify a symbol. Example: 'Add BTCUSDT to quick file'"
+                
+                command = 'SELL' if 'sell' in query_lower else 'BUY'
+                
+                from gordon.core.utilities import add_token_to_file
+                file_path = qbs_config.get('token_file_path', './token_addresses.txt')
+                add_token_to_file(file_path, symbol, command)
+                
+                return f"✅ Added {symbol} ({command}) to {file_path}"
+            
+            else:
+                return """
+⚡ **Quick Buy/Sell Help** (Day 51)
+
+I can help with:
+- "Quick buy BTCUSDT for $10" - Instant market buy
+- "Quick sell ETHUSDT" - Instant market sell
+- "Start quick buy/sell monitor" - Monitor file for rapid execution
+- "Add BTCUSDT to quick file" - Add token to monitoring file
+
+**File Format:**
+- Token symbol only = BUY (e.g., "BTCUSDT")
+- Token symbol + 'x' = SELL (e.g., "BTCUSDT x")
+
+**Examples:**
+- "Buy Bitcoin quickly for $10"
+- "Sell my Ethereum position instantly"
+- "Start monitoring token file"
+- "Add SOLUSDT to file for buying"
+"""
+                
+        except Exception as e:
+            self.logger._log(f"Quick buy/sell failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"Quick buy/sell error: {str(e)}"
+
     # ========== BACKTESTING ==========
 
     @show_progress("Running backtest...", "Backtest complete")
@@ -1382,8 +1872,162 @@ Win Rate: {results.get('win_rate', 0):.2f}%
         return result
 
     async def general_assistance(self, query: str) -> str:
-        """Handle general queries."""
-        return f"""
+        """Handle general queries using LLM for true semantic understanding."""
+        try:
+            from .model import call_llm
+            
+            # Build comprehensive context about all available commands
+            command_context = """
+You are Gordon, a comprehensive trading and research agent. You can execute commands in these categories:
+
+**POSITION MANAGEMENT (Day 48)**:
+- Close positions when profit/loss thresholds are reached (take profit/stop loss)
+- Close large positions in smaller chunks to minimize market impact
+- Easy entry strategies (averaging into positions at good prices)
+- Track positions for automatic PnL monitoring
+- Check current profit/loss status
+
+**POSITION MANAGEMENT (Day 48)**:
+- Close positions when profit/loss thresholds are reached (take profit/stop loss)
+- Close large positions in smaller chunks to minimize market impact
+- Easy entry strategies (averaging into positions at good prices)
+- Track positions for automatic PnL monitoring
+- Check current profit/loss status
+
+**QUICK BUY/SELL (Day 51)**:
+- Instant market buy/sell execution
+- File-based rapid execution system
+- Monitor text file for token symbols
+- Perfect for arbitrage opportunities and new token launches
+
+**STRATEGIES**:
+- MA Reversal Strategy (Day 49): Dual moving average crossover reversal
+- Enhanced Supply/Demand Strategy (Day 50): Trend-based zone trading
+- RSI, SMA, VWAP, Bollinger Bands strategies
+- Liquidation Hunter Strategy
+- Market Making Strategy
+
+**MARKET ANALYSIS**:
+- Whale tracking (multi-address, liquidation risk, position aggregation)
+- Position sizing calculations
+- Order book depth analysis
+- Market dashboard (trending tokens, new listings, volume leaders)
+- RRS (Relative Rotation Strength) analysis
+- ML indicator evaluation and ranking
+- Trader intelligence (early buyers, institutional traders)
+
+**RESEARCH**:
+- Financial statement analysis
+- SEC filings (10-K, 10-Q, 8-K)
+- Company fundamentals
+- Analyst estimates
+
+**BACKTESTING**:
+- Historical strategy performance
+- Parameter optimization
+- Multiple timeframes
+
+**CONVERSATION**:
+- Search conversation history
+- Export conversations
+- Conversation analytics
+- Multi-user support
+
+**SYSTEM**:
+- System status
+- Configuration
+- Risk settings
+
+User Query: "{query}"
+
+Your task:
+1. If the query matches any command category above, respond with: EXECUTE: [category] [original_query]
+2. If the query is asking what you can do or for help, provide a helpful response listing capabilities
+3. If the query doesn't match any command but is trading/research related, provide helpful guidance
+
+Be flexible in interpretation - understand synonyms, paraphrasing, and different phrasings. For example:
+- "What's my profit on BTC?" = EXECUTE: position_management Check PnL for BTCUSDT
+- "Sell my Bitcoin position gradually" = EXECUTE: position_management Close BTCUSDT in chunks
+- "I want to get into Ethereum at a good price" = EXECUTE: position_management Easy entry for ETHUSDT
+- "Show me the biggest holders" = EXECUTE: whale_tracking Track whale positions
+- "How much Bitcoin should I buy?" = EXECUTE: position_sizing Calculate position size
+- "Quick buy BTCUSDT for $10" = EXECUTE: quick_buysell Quick buy BTCUSDT for $10
+- "Instant sell ETHUSDT" = EXECUTE: quick_buysell Quick sell ETHUSDT
+- "Start monitoring token file" = EXECUTE: quick_buysell Start quick buy/sell monitor
+
+Respond naturally and helpfully."""
+            
+            import asyncio
+            loop = asyncio.get_event_loop()
+            llm_response = await loop.run_in_executor(
+                None,
+                lambda: call_llm(
+                    prompt=query,
+                    system_prompt=command_context.format(query=query),
+                    model="gpt-4o-mini"
+                )
+            )
+            
+            response_text = str(llm_response.content) if hasattr(llm_response, 'content') else str(llm_response)
+            
+            # Check if LLM wants to execute a command
+            if "EXECUTE:" in response_text.upper():
+                # Parse command execution
+                parts = response_text.split("EXECUTE:")[1].strip().split("\n")[0].strip()
+                command_parts = parts.split(" ", 1)
+                category = command_parts[0] if command_parts else None
+                enhanced_query = command_parts[1] if len(command_parts) > 1 else query
+                
+                # Re-classify and route
+                if category:
+                    # Map to handler
+                    if category == "position_management":
+                        return await self.handle_position_management(enhanced_query)
+                    elif category == "ma_reversal":
+                        return await self.handle_ma_reversal(enhanced_query)
+                    elif category == "enhanced_sd":
+                        return await self.handle_enhanced_sd(enhanced_query)
+                    elif category == "quick_buysell":
+                        return await self.handle_quick_buysell(enhanced_query)
+                    elif category == "whale_tracking":
+                        return await self.handle_whale_tracking(enhanced_query)
+                    elif category == "position_sizing":
+                        return await self.handle_position_sizing(enhanced_query)
+                    elif category == "ml_indicators":
+                        return await self.handle_ml_indicators(enhanced_query)
+                    elif category == "rrs_analysis":
+                        return await self.handle_rrs_analysis(enhanced_query)
+                    elif category == "trader_intelligence":
+                        return await self.handle_trader_intelligence(enhanced_query)
+                    elif category == "liquidation_hunter":
+                        return await self.handle_liquidation_hunter(enhanced_query)
+                    elif category == "orderbook_analysis":
+                        return await self.handle_orderbook_analysis(enhanced_query)
+                    elif category == "market_dashboard":
+                        return await self.handle_market_dashboard(enhanced_query)
+                    elif category == "conversation":
+                        return await self.handle_conversation_commands(enhanced_query)
+                    elif category == "system":
+                        return await self.handle_system_commands(enhanced_query)
+                    elif category == "research":
+                        return await self.research(enhanced_query)
+                    elif category == "trading":
+                        return await self.trade(enhanced_query)
+                    elif category == "backtest":
+                        return await self.backtest(enhanced_query)
+                    elif category == "hybrid":
+                        return await self.research_and_trade(enhanced_query)
+                
+                # If category not recognized, try re-running with enhanced query
+                return await self.run(enhanced_query)
+            
+            # Otherwise return LLM's helpful response
+            return response_text
+            
+        except Exception as e:
+            self.logger._log(f"LLM assistance failed: {e}")
+            # Fallback to static help
+            return f"""
 🤖 Gordon here! I can help you with:
 
 📊 **Financial Research**:
@@ -1403,11 +2047,15 @@ Win Rate: {results.get('win_rate', 0):.2f}%
 - Optimization
 - Multiple timeframes
 
-🐋 **Whale Tracking** (Day 44):
+🐋 **Whale Tracking** (Day 44 + Day 46 Enhanced):
 - Track large positions and whales
 - Monitor institutional traders
 - Analyze position movements
 - Identify top holders
+- **Day 46: Multi-address tracking**
+- **Day 46: Liquidation risk analysis (3% threshold)**
+- **Day 46: Position aggregation by coin**
+- **Day 46: CSV export and reporting**
 
 📏 **Position Sizing** (Day 44):
 - Calculate position sizes from balance
@@ -1461,6 +2109,9 @@ Try asking:
 - "Run RSI strategy on BTC"
 - "Backtest SMA strategy on ETH"
 - "Track whale positions for Bitcoin"
+- "Track multiple whale addresses" (Day 46)
+- "Show liquidation risk analysis" (Day 46)
+- "Aggregate positions by coin" (Day 46)
 - "Calculate position size for $10k balance at $50k price"
 - "How much should I buy with 2x leverage?"
 - "Show me large positions on BTCUSDT"
@@ -1472,6 +2123,13 @@ Try asking:
 - "Run liquidation hunter for BTC"
 - "Analyze order book for BTCUSDT"
 - "Show liquidation data"
+- "Close BTCUSDT position based on PnL" (Day 48)
+- "Close ETHUSDT in chunks" (Day 48)
+- "Easy entry for SOLUSDT" (Day 48)
+- "Track BTCUSDT position entry $50000 quantity 0.1" (Day 48)
+- "Check PnL for ETHUSDT" (Day 48)
+- "Run MA reversal strategy for BTC" (Day 49)
+- "Execute enhanced supply/demand strategy for ETH" (Day 50)
 """
 
 

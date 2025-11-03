@@ -215,7 +215,7 @@ trader_intelligence:
     institutional_threshold: 50000.0
     professional_threshold: 10000.0
 
-# Whale Tracking (Day 44)
+# Whale Tracking (Day 44 + Day 46 Enhanced)
 whale_tracking:
   enabled: true
   output_dir: './whale_tracking_output'
@@ -224,6 +224,13 @@ whale_tracking:
   min_position_value: 25000.0
   top_n_positions: 25
   update_interval_minutes: 30
+  # Day 46: Multi-address tracking
+  multi_address_tracking:
+    enabled: true
+    whale_addresses_file: 'whale_addresses.txt'
+    max_workers: 10
+    api_request_delay: 0.1  # seconds
+    liquidation_risk_threshold: 3.0  # 3% distance to liquidation
 
 # Position Sizing (Day 44)
 position_sizing:
@@ -378,8 +385,138 @@ logging:
 performance:
   track_trades: true
   track_pnl: true
-  save_to_database: false
+  save_to_database: true  # Enable database persistence
   export_format: "json"  # json, csv, parquet
+
+# Database Configuration
+database:
+  enabled: true  # Enable database layer
+  # Database URL (optional - defaults to SQLite)
+  # For SQLite: leave empty or use "sqlite:///./database/gordon.db"
+  # For PostgreSQL: "postgresql://user:password@localhost/gordon"
+  # For MySQL: "mysql://user:password@localhost/gordon"
+  url: ""  # Empty = use SQLite in directory below
+  directory: "./database"  # Directory for SQLite database files
+  file: "gordon.db"  # SQLite database filename
+  echo: false  # SQLAlchemy echo (debug SQL queries)
+  
+  # Auto-save settings
+  auto_save_trades: true
+  auto_save_positions: true
+  auto_save_strategy_metrics: true
+  auto_save_risk_metrics: true
+  metrics_snapshot_interval: 300  # Save metrics every 5 minutes (seconds)
+
+# Market Dashboard (Day 47)
+market_dashboard:
+  enabled: true
+  output_dir: './market_dashboard_output'
+  # Binance configuration
+  binance:
+    enabled: true
+    min_volume_24h: 1000000  # $1M minimum volume
+    min_price_change_threshold: 5.0  # 5% minimum price change
+    display_trending_tokens: 40
+    display_new_listings: 30
+    gems_max_price: 1.0  # Under $1 for gems
+    gems_min_volume: 100000  # $100K minimum volume for gems
+    min_new_listing_volume: 500000
+    new_listing_days: 7
+    focus_usdt_pairs: true
+    api_delay: 0.2
+    price_precision: 8
+    ignore_list:
+      - "BTCUSDT"
+      - "ETHUSDT"
+      - "BNBUSDT"
+      - "USDC"
+      - "BUSD"
+  # Bitfinex configuration
+  bitfinex:
+    enabled: true
+    min_volume_24h: 500000  # $500K minimum volume
+    min_price_change_threshold: 10.0  # 10% minimum price change
+    display_trending_tokens: 40
+    display_new_listings: 30
+    gems_max_price: 5.0  # Under $5 for gems
+    gems_min_volume: 50000  # $50K minimum volume for gems
+    min_new_listing_volume: 10000
+    max_new_listing_volume: 1000000
+    focus_usd_pairs: true
+    include_funding_analysis: true
+    funding_rate_threshold: 0.01  # 1% funding rate threshold
+    api_delay: 1.0
+    price_precision: 6
+    ignore_list:
+      - "BTCUSD"
+      - "ETHUSD"
+      - "DAIUSD"
+
+# Position Management (Day 48)
+position_management:
+  # PnL-based position closing
+  pnl_manager:
+    enabled: true
+    positions_file: './data/pnl_positions.json'
+    default_take_profit_pct: 10.0  # 10% take profit
+    default_stop_loss_pct: 5.0  # 5% stop loss
+  # Chunk position closing
+  chunk_closer:
+    enabled: true
+    default_max_order_size_usd: 1000.0  # Maximum USD per chunk
+    default_sleep_between_orders: 60  # seconds
+    min_chunk_size_usd: 50.0  # Minimum chunk size
+  # Easy entry strategy
+  easy_entry:
+    enabled: true
+    default_total_position_size_usd: 1000.0  # Target position size
+    default_max_order_size_usd: 500.0  # Max order size per chunk
+    default_target_fill_ratio: 0.97  # 97% fill target
+    default_sleep_after_buy: 10  # seconds
+    default_min_buy_threshold_usd: 10.0  # Minimum buy amount
+    default_max_attempts: 20  # Maximum buy attempts
+
+# Day 49: 2x MA Reversal Strategy
+ma_reversal_strategy:
+  enabled: true
+  ma_fast: 25  # Fast MA period
+  ma_slow: 30  # Slow MA period
+  take_profit_pct: 0.05  # 5% take profit
+  stop_loss_pct: 0.05  # 5% stop loss
+  position_size_usd: 1000.0
+  symbol: "BTCUSDT"
+  timeframe: "1d"
+  lookback_periods: 100
+
+# Day 50: Enhanced Supply/Demand Zone Strategy
+enhanced_sd_strategy:
+  enabled: true
+  position_size_usd: 150.0
+  minimum_position_pct: 0.05  # 5% minimum position
+  buffer_pct: 0.05  # 5% buffer
+  sell_pct_trending_up: 0.50  # 50% sell in uptrend
+  sell_pct_trending_down: 0.95  # 95% sell in downtrend
+  orders_per_sell: 3  # Triple-sell
+  orders_per_open: 1
+  sma_timeframe: "1h"
+  sma_bars: 10
+  sma_buffer_pct: 0.15  # 15% SMA buffer
+  timeframe: "15m"
+  days_back: 0.2
+
+# Day 51: Quick Buy/Sell Strategy
+quick_buysell:
+  enabled: true
+  exchange: "binance"  # binance or bitfinex
+  token_file_path: "./token_addresses.txt"  # File to monitor for tokens
+  usd_size: 10.0  # USD amount per buy order
+  check_delay: 3  # Seconds to wait before checking position after orders
+  max_retries: 3  # Maximum number of attempts
+  buys_per_batch: 1  # Number of rapid buy orders to execute
+  sells_per_batch: 2  # Number of rapid sell orders to execute
+  sell_percentage: 0.8  # Sell 80% of position when 'x' or 'c' command
+  min_position_value: 5.0  # Minimum position value to consider for selling
+  auto_start: false  # Automatically start monitoring on strategy load
 
 # Safety Settings
 safety:

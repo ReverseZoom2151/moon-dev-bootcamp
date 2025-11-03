@@ -82,6 +82,17 @@ class EventBus:
             ]
             self.logger.debug(f"Unsubscribed handler from event: {event_type}")
 
+    def on(self, event_type: str, handler: Callable, priority: int = 0):
+        """
+        Alias for subscribe() for convenience.
+        
+        Args:
+            event_type: Type of event to subscribe to
+            handler: Async function to handle the event
+            priority: Handler priority (higher = earlier execution)
+        """
+        self.subscribe(event_type, handler, priority=priority)
+
     async def emit(self, event_type: str, data: Any = None,
                   metadata: Optional[Dict] = None):
         """

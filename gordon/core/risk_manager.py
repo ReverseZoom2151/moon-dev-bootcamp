@@ -253,13 +253,32 @@ class RiskManager:
 
     def get_risk_metrics(self) -> Dict:
         """
-        Get current risk metrics.
-        Aggregates metrics from all modular components.
+        Get current risk metrics with advanced analytics.
+        Aggregates metrics from all modular components and calculates advanced metrics.
         """
         # Get metrics from each component
         drawdown_metrics = self.drawdown_calculator.get_drawdown_metrics()
         pnl_metrics = self.pnl_calculator.get_pnl_metrics()
         risk_limits_metrics = self.risk_limits.get_risk_limits()
+
+        # Calculate advanced metrics
+        current_drawdown = drawdown_metrics["current_drawdown_percent"]
+        max_drawdown = drawdown_metrics["max_drawdown_percent"]
+        daily_pnl = pnl_metrics["daily_pnl"]
+        
+        # Calculate VaR (Value at Risk) - 95% confidence
+        var_95 = self._calculate_var_95()
+        
+        # Calculate Sharpe Ratio
+        sharpe_ratio = self._calculate_sharpe_ratio()
+        
+        # Calculate volatility
+        volatility = self._calculate_volatility()
+        
+        # Calculate risk score (0-100, higher is riskier)
+        risk_score = self._calculate_risk_score(
+            current_drawdown, max_drawdown, daily_pnl, var_95, volatility
+        )
 
         # Combine into unified metrics dict
         return {
@@ -271,11 +290,11 @@ class RiskManager:
             # Balance and drawdown
             "current_balance": drawdown_metrics["current_balance"],
             "peak_balance": drawdown_metrics["peak_balance"],
-            "drawdown_percent": drawdown_metrics["current_drawdown_percent"],
-            "max_drawdown_percent": drawdown_metrics["max_drawdown_percent"],
+            "current_drawdown": current_drawdown,
+            "max_drawdown": max_drawdown,
 
             # PnL
-            "daily_pnl": pnl_metrics["daily_pnl"],
+            "daily_pnl": daily_pnl,
             "daily_loss_limit": pnl_metrics["daily_loss_limit"],
             "weekly_pnl": pnl_metrics["weekly_pnl"],
             "monthly_pnl": pnl_metrics["monthly_pnl"],
@@ -283,8 +302,185 @@ class RiskManager:
             # Position sizing
             "risk_per_trade_percent": self.risk_per_trade_percent,
             "max_leverage": self.max_leverage,
-            "max_position_size": self.max_position_size
+            "max_position_size": self.max_position_size,
+            
+            # Advanced metrics (Phase 1)
+            "var_95": var_95,
+            "sharpe_ratio": sharpe_ratio,
+            "volatility": volatility,
+            "risk_score": risk_score
         }
+    
+    def _calculate_var_95(self) -> Optional[float]:
+        """
+        Calculate Value at Risk (VaR) at 95% confidence level.
+        
+        Returns:
+            VaR value or None if insufficient data
+        """
+        try:
+            import numpy as np
+            
+            # Get PnL history from drawdown calculator
+            pnl_history = self.drawdown_calculator.drawdown_history
+            
+            if len(pnl_history) < 20:  # Need at least 20 data points
+                return None
+            
+            # Extract PnL values
+            pnl_values = [point.get('pnl', 0) for point in pnl_history[-252:]]  # Last year
+            
+            if not pnl_values or len(pnl_values) < 20:
+                return None
+            
+            # Calculate VaR using historical simulation method
+            # VaR at 95% = 5th percentile of returns
+            sorted_pnl = sorted(pnl_values)
+            var_index = int(len(sorted_pnl) * 0.05)
+            
+            if var_index >= len(sorted_pnl):
+                var_index = len(sorted_pnl) - 1
+            
+            var_95 = abs(sorted_pnl[var_index]) if sorted_pnl[var_index] < 0 else 0
+            
+            return var_95
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate VaR: {e}")
+            return None
+    
+    def _calculate_sharpe_ratio(self, risk_free_rate: float = 0.02) -> Optional[float]:
+        """
+        Calculate Sharpe Ratio.
+        
+        Args:
+            risk_free_rate: Annual risk-free rate (default 2%)
+        
+        Returns:
+            Sharpe ratio or None if insufficient data
+        """
+        try:
+            import numpy as np
+            
+            # Get PnL history
+            pnl_history = self.drawdown_calculator.drawdown_history
+            
+            if len(pnl_history) < 20:
+                return None
+            
+            # Extract returns (daily PnL percentages)
+            returns = []
+            for i in range(1, len(pnl_history)):
+                prev_balance = pnl_history[i-1].get('balance', 0)
+                curr_balance = pnl_history[i].get('balance', 0)
+                
+                if prev_balance > 0:
+                    daily_return = (curr_balance - prev_balance) / prev_balance
+                    returns.append(daily_return)
+            
+            if len(returns) < 20:
+                return None
+            
+            # Calculate Sharpe Ratio
+            # Sharpe = (Mean Return - Risk Free Rate) / Std Dev of Returns
+            mean_return = np.mean(returns)
+            std_return = np.std(returns)
+            
+            if std_return == 0:
+                return None
+            
+            # Annualize (assuming daily returns)
+            annual_mean = mean_return * 252
+            annual_std = std_return * np.sqrt(252)
+            
+            sharpe = (annual_mean - risk_free_rate) / annual_std if annual_std > 0 else None
+            
+            return sharpe
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate Sharpe ratio: {e}")
+            return None
+    
+    def _calculate_volatility(self) -> Optional[float]:
+        """
+        Calculate portfolio volatility (annualized).
+        
+        Returns:
+            Volatility as percentage or None if insufficient data
+        """
+        try:
+            import numpy as np
+            
+            # Get PnL history
+            pnl_history = self.drawdown_calculator.drawdown_history
+            
+            if len(pnl_history) < 20:
+                return None
+            
+            # Extract returns
+            returns = []
+            for i in range(1, len(pnl_history)):
+                prev_balance = pnl_history[i-1].get('balance', 0)
+                curr_balance = pnl_history[i].get('balance', 0)
+                
+                if prev_balance > 0:
+                    daily_return = (curr_balance - prev_balance) / prev_balance
+                    returns.append(daily_return)
+            
+            if len(returns) < 20:
+                return None
+            
+            # Calculate annualized volatility
+            std_return = np.std(returns)
+            annual_volatility = std_return * np.sqrt(252) * 100  # Convert to percentage
+            
+            return annual_volatility
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate volatility: {e}")
+            return None
+    
+    def _calculate_risk_score(self, current_drawdown: float, max_drawdown: float,
+                             daily_pnl: float, var_95: Optional[float],
+                             volatility: Optional[float]) -> float:
+        """
+        Calculate overall risk score (0-100, higher is riskier).
+        
+        Args:
+            current_drawdown: Current drawdown percentage
+            max_drawdown: Maximum drawdown percentage
+            daily_pnl: Daily PnL
+            var_95: Value at Risk at 95%
+            volatility: Portfolio volatility
+        
+        Returns:
+            Risk score from 0-100
+        """
+        score = 0.0
+        
+        # Drawdown component (40% weight)
+        drawdown_score = min(current_drawdown / self.max_drawdown_percent * 100, 100)
+        score += drawdown_score * 0.4
+        
+        # Daily loss component (30% weight)
+        if self.daily_loss_limit > 0:
+            loss_ratio = abs(min(daily_pnl, 0)) / abs(self.daily_loss_limit)
+            loss_score = min(loss_ratio * 100, 100)
+            score += loss_score * 0.3
+        
+        # VaR component (20% weight)
+        if var_95 is not None and self.current_balance > 0:
+            var_ratio = var_95 / self.current_balance
+            var_score = min(var_ratio * 100 * 10, 100)  # Scale appropriately
+            score += var_score * 0.2
+        
+        # Volatility component (10% weight)
+        if volatility is not None:
+            # High volatility = higher risk
+            vol_score = min(volatility / 50 * 100, 100)  # Normalize to 50% volatility = 100
+            score += vol_score * 0.1
+        
+        return min(score, 100.0)  # Cap at 100
 
     def reset_daily_limits(self):
         """

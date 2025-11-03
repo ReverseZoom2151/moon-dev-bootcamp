@@ -11,6 +11,7 @@ import sys
 import argparse
 import asyncio
 import json
+import pandas as pd
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
@@ -286,14 +287,30 @@ def print_help():
     • find-accounts SYMBOL [MAX] - Find accounts to follow
     • institutional-traders SYMBOL - Analyze institutional traders
     
-    🐋 WHALE TRACKING COMMANDS (Day 44):
+    🐋 WHALE TRACKING COMMANDS (Day 44 + Day 46):
     • whale-track [SYMBOL] [MIN_VALUE] - Track whale positions
+    • multi-whale-track [SYMBOL] [MIN_VALUE] - Track multiple whale addresses (Day 46)
+    • liquidation-risk [SYMBOL] [THRESHOLD%] - Analyze liquidation risk (Day 46)
+    • aggregate-positions [SYMBOL] - Show aggregated positions report (Day 46)
     • position-size [balance|usd|risk] [args...] - Calculate position size
     
     🎯 LIQUIDATION HUNTER COMMANDS (Day 45):
     • liq-hunter [SYMBOL] - Run liquidation hunter analysis
     • moondev-data [liquidations|funding|oi|positions|whales] [LIMIT] - Fetch Moon Dev API data
     • orderbook-analyze SYMBOL - Analyze order book depth and whale orders
+    
+    📊 MARKET DASHBOARD COMMANDS (Day 47):
+    • market-dashboard [binance|bitfinex] - Run full market dashboard analysis
+    • trending-tokens [binance|bitfinex] - Show trending tokens
+    • new-listings [binance|bitfinex] - Show new token listings
+    • volume-leaders [binance|bitfinex] - Show volume leaders
+    • funding-rates - Show funding rates (Bitfinex only)
+    
+    ⚡ QUICK BUY/SELL COMMANDS (Day 51):
+    • quick-buy SYMBOL [USD_AMOUNT] - Execute instant market buy
+    • quick-sell SYMBOL - Execute instant market sell
+    • quick-monitor - Start file monitoring for rapid execution
+    • add-to-quick-file SYMBOL [BUY|SELL] - Add token to monitoring file
     
     • exit/quit - Exit Gordon
 
@@ -476,7 +493,23 @@ def run_interactive_mode(gordon: Agent, conversational: bool = False, exchange: 
             if not query:
                 continue
 
-            elif query.lower() == 'help':
+            # Try natural language parsing first (before exact command matching)
+            nl_parsed = False
+            try:
+                from gordon.agent.nl_command_parser import NLCommandParser
+                parsed = NLCommandParser.parse(query)
+                if parsed:
+                    command_prefix, params = parsed
+                    # Convert to CLI command
+                    converted_command = NLCommandParser.convert_to_command(command_prefix, params)
+                    # Use converted command instead of original query
+                    query = converted_command
+                    nl_parsed = True
+            except Exception:
+                # If NL parsing fails, continue with original query
+                pass
+
+            if query.lower() == 'help':
                 print_help()
                 continue
 
@@ -953,6 +986,1080 @@ def run_interactive_mode(gordon: Agent, conversational: bool = False, exchange: 
                     traceback.print_exc()
                 continue
 
+            elif query.lower().startswith('multi-whale-track') or query.lower().startswith('multi-address-track'):
+                # Day 46: Multi-address whale tracking
+                parts = query.split()
+                symbol = parts[1] if len(parts) > 1 else None
+                min_value = float(parts[2]) if len(parts) > 2 else None
+                print(f"\n🐋🐋 Multi-Address Whale Tracking{f' for {symbol}' if symbol else ''}...")
+                try:
+                    from gordon.core.utilities import WhaleTrackingManager
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    whale_config = config.get('whale_tracking', {})
+                    manager = WhaleTrackingManager(
+                        exchange_adapter=exchange_adapter,
+                        config=whale_config
+                    )
+                    
+                    async def track_multi():
+                        results = await manager.track_multi_address_whales(
+                            symbol=symbol,
+                            min_value_usd=min_value,
+                            export_csv=True
+                        )
+                        
+                        if results['positions'].empty:
+                            print("❌ No positions found for tracked addresses")
+                            return
+                        
+                        print(f"\n✅ Found {len(results['positions'])} positions from {len(results['positions']['address'].unique())} addresses")
+                        
+                        # Show aggregated report
+                        agg_report = manager.get_aggregated_positions_report(results['positions'])
+                        print(f"\n{agg_report}")
+                        
+                        # Show liquidation risk if available
+                        if not results['liquidation_risk'].empty:
+                            liq_report = await manager.get_liquidation_risk_report(
+                                results['positions'],
+                                threshold_pct=whale_config.get('multi_address_tracking', {}).get('liquidation_risk_threshold', 3.0)
+                            )
+                            print(f"\n{liq_report}")
+                        
+                        # Show saved files
+                        saved_files = results.get('saved_files', {})
+                        if saved_files:
+                            print(f"\n💾 Saved CSV files:")
+                            for key, path in saved_files.items():
+                                if path:
+                                    print(f"   - {key}: {path}")
+                    
+                    asyncio.run(track_multi())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('liquidation-risk') or query.lower().startswith('liq-risk'):
+                # Day 46: Liquidation risk analysis
+                parts = query.split()
+                symbol = parts[1] if len(parts) > 1 else None
+                threshold = float(parts[2]) if len(parts) > 2 else 3.0
+                print(f"\n💥 Liquidation Risk Analysis (threshold: {threshold}%)...")
+                try:
+                    from gordon.core.utilities import WhaleTrackingManager
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    manager = WhaleTrackingManager(
+                        exchange_adapter=exchange_adapter,
+                        config=config.get('whale_tracking', {})
+                    )
+                    
+                    async def analyze_risk():
+                        # First get positions (from multi-address tracking or single tracking)
+                        results = await manager.track_multi_address_whales(
+                            symbol=symbol,
+                            export_csv=False
+                        )
+                        
+                        positions_df = results.get('positions', pd.DataFrame())
+                        if positions_df.empty:
+                            # Fallback to single tracking
+                            single_results = await manager.track_whales(symbol=symbol)
+                            positions_df = single_results.get('whale_positions', pd.DataFrame())
+                        
+                        if positions_df.empty:
+                            print("❌ No positions found for liquidation risk analysis")
+                            return
+                        
+                        report = await manager.get_liquidation_risk_report(
+                            positions_df,
+                            threshold_pct=threshold,
+                            top_n=20
+                        )
+                        print(f"\n{report}")
+                    
+                    asyncio.run(analyze_risk())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('aggregate-positions') or query.lower().startswith('agg-positions'):
+                # Day 46: Aggregated positions report
+                parts = query.split()
+                symbol = parts[1] if len(parts) > 1 else None
+                print(f"\n📊 Aggregated Positions Report{f' for {symbol}' if symbol else ''}...")
+                try:
+                    from gordon.core.utilities import WhaleTrackingManager
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    manager = WhaleTrackingManager(
+                        exchange_adapter=exchange_adapter,
+                        config=config.get('whale_tracking', {})
+                    )
+                    
+                    async def aggregate():
+                        results = await manager.track_multi_address_whales(
+                            symbol=symbol,
+                            export_csv=False
+                        )
+                        
+                        positions_df = results.get('positions', pd.DataFrame())
+                        if positions_df.empty:
+                            single_results = await manager.track_whales(symbol=symbol)
+                            positions_df = single_results.get('whale_positions', pd.DataFrame())
+                        
+                        if positions_df.empty:
+                            print("❌ No positions found for aggregation")
+                            return
+                        
+                        report = manager.get_aggregated_positions_report(positions_df)
+                        print(f"\n{report}")
+                    
+                    asyncio.run(aggregate())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('market-dashboard') or query.lower().startswith('market-tracker'):
+                # Day 47: Market Dashboard
+                parts = query.split()
+                exchange = parts[1].lower() if len(parts) > 1 else 'binance'
+                print(f"\n📊 Market Dashboard for {exchange.upper()}...")
+                try:
+                    from gordon.market import MarketDashboard
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get(exchange, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    # Initialize exchange adapter
+                    async def init_and_run():
+                        await exchange_adapter.initialize()
+                        
+                        # Get market dashboard config
+                        market_config = config.get('market_dashboard', {}).get(exchange, {})
+                        dashboard = MarketDashboard(
+                            exchange_adapter=exchange_adapter,
+                            exchange_name=exchange,
+                            config=market_config
+                        )
+                        
+                        results = await dashboard.run_full_analysis(export_csv=True)
+                        dashboard.display_results(results)
+                        
+                        summary = dashboard.get_summary_report(results)
+                        print(f"\n{summary}")
+                    
+                    asyncio.run(init_and_run())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('trending-tokens') or query.lower().startswith('trending'):
+                # Day 47: Trending Tokens
+                parts = query.split()
+                exchange = parts[1].lower() if len(parts) > 1 else 'binance'
+                print(f"\n🚀 Fetching trending tokens from {exchange.upper()}...")
+                try:
+                    from gordon.market import MarketDashboard
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get(exchange, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def init_and_get_trending():
+                        await exchange_adapter.initialize()
+                        
+                        market_config = config.get('market_dashboard', {}).get(exchange, {})
+                        dashboard = MarketDashboard(
+                            exchange_adapter=exchange_adapter,
+                            exchange_name=exchange,
+                            config=market_config
+                        )
+                        
+                        trending_df = await dashboard.market_client.fetch_trending_tokens()
+                        if not trending_df.empty:
+                            dashboard.display.display_trending_tokens(trending_df, exchange.upper())
+                        else:
+                            print("❌ No trending tokens found")
+                    
+                    asyncio.run(init_and_get_trending())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('new-listings') or query.lower().startswith('new-tokens'):
+                # Day 47: New Listings
+                parts = query.split()
+                exchange = parts[1].lower() if len(parts) > 1 else 'binance'
+                print(f"\n🌟 Fetching new listings from {exchange.upper()}...")
+                try:
+                    from gordon.market import MarketDashboard
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get(exchange, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def init_and_get_listings():
+                        await exchange_adapter.initialize()
+                        
+                        market_config = config.get('market_dashboard', {}).get(exchange, {})
+                        dashboard = MarketDashboard(
+                            exchange_adapter=exchange_adapter,
+                            exchange_name=exchange,
+                            config=market_config
+                        )
+                        
+                        listings_df = await dashboard.market_client.fetch_new_listings()
+                        if not listings_df.empty:
+                            dashboard.display.display_new_listings(listings_df, exchange.upper())
+                        else:
+                            print("❌ No new listings found")
+                    
+                    asyncio.run(init_and_get_listings())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('volume-leaders') or query.lower().startswith('volume'):
+                # Day 47: Volume Leaders
+                parts = query.split()
+                exchange = parts[1].lower() if len(parts) > 1 else 'binance'
+                print(f"\n📊 Fetching volume leaders from {exchange.upper()}...")
+                try:
+                    from gordon.market import MarketDashboard
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get(exchange, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def init_and_get_volume():
+                        await exchange_adapter.initialize()
+                        
+                        market_config = config.get('market_dashboard', {}).get(exchange, {})
+                        dashboard = MarketDashboard(
+                            exchange_adapter=exchange_adapter,
+                            exchange_name=exchange,
+                            config=market_config
+                        )
+                        
+                        volume_df = await dashboard.market_client.fetch_high_volume_tokens()
+                        if not volume_df.empty:
+                            dashboard.display.display_volume_leaders(volume_df, exchange.upper())
+                        else:
+                            print("❌ No volume data found")
+                    
+                    asyncio.run(init_and_get_volume())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('funding-rates') or query.lower().startswith('funding'):
+                # Day 47: Funding Rates (Bitfinex only)
+                print(f"\n💰 Fetching funding rates from Bitfinex...")
+                try:
+                    from gordon.market import MarketDashboard, FundingRateAnalyzer
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('bitfinex', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'bitfinex',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def init_and_get_funding():
+                        await exchange_adapter.initialize()
+                        
+                        market_config = config.get('market_dashboard', {}).get('bitfinex', {})
+                        analyzer = FundingRateAnalyzer(
+                            exchange_adapter=exchange_adapter,
+                            config=market_config
+                        )
+                        
+                        funding_df = await analyzer.fetch_funding_rates()
+                        if not funding_df.empty:
+                            analyzer.display_funding_rates(funding_df)
+                            
+                            # Show arbitrage opportunities
+                            arbitrage_df = analyzer.analyze_arbitrage_opportunities(funding_df)
+                            if not arbitrage_df.empty:
+                                print(f"\n🎯 Found {len(arbitrage_df)} arbitrage opportunities!")
+                                print(arbitrage_df[['symbol', 'base_symbol', 'funding_rate', 'opportunity_score']].head(10).to_string(index=False))
+                        else:
+                            print("❌ No funding rate data found")
+                    
+                    asyncio.run(init_and_get_funding())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('pnl-close') or query.lower().startswith('pnl-close-position'):
+                # Day 48: PnL-based position closing
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                if not symbol:
+                    print("Usage: pnl-close SYMBOL")
+                    continue
+                print(f"\n💰 PnL-based Position Closing for {symbol}...")
+                try:
+                    from gordon.core.utilities import PnLPositionManager
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def close_pnl():
+                        await exchange_adapter.initialize()
+                        
+                        pnl_config = config.get('position_management', {}).get('pnl_manager', {})
+                        pnl_manager = PnLPositionManager(
+                            exchange_adapter=exchange_adapter,
+                            config=pnl_config
+                        )
+                        
+                        # Get current price
+                        ticker = await exchange_adapter.get_ticker(symbol)
+                        if not ticker:
+                            print(f"❌ Could not get price for {symbol}")
+                            return
+                        
+                        current_price = float(ticker.get('last', 0))
+                        
+                        # Check if position should be closed
+                        close_info = pnl_manager.check_and_close_position(symbol, current_price)
+                        
+                        if close_info and close_info.get('should_close'):
+                            print(f"✅ {close_info['reason']}")
+                            print(f"   PnL: {close_info['pnl_pct']:.2f}%")
+                            print(f"   Closing position...")
+                            
+                            success = await pnl_manager.close_position(symbol)
+                            if success:
+                                print(f"✅ Position closed successfully!")
+                            else:
+                                print(f"❌ Failed to close position")
+                        else:
+                            if close_info:
+                                print(f"📊 Current PnL: {close_info['pnl_pct']:.2f}%")
+                                print(f"   Take Profit: {close_info.get('take_profit_pct', 0):.2f}%")
+                                print(f"   Stop Loss: -{close_info.get('stop_loss_pct', 0):.2f}%")
+                                print(f"   Status: Position not at threshold")
+                            else:
+                                print(f"❌ No tracked position for {symbol}")
+                    
+                    asyncio.run(close_pnl())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('chunk-close') or query.lower().startswith('chunk-close-position'):
+                # Day 48: Chunk position closing
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                max_size = float(parts[2]) if len(parts) > 2 else None
+                if not symbol:
+                    print("Usage: chunk-close SYMBOL [MAX_SIZE_USD]")
+                    continue
+                print(f"\n📦 Chunk Position Closing for {symbol}...")
+                try:
+                    from gordon.core.utilities import ChunkPositionCloser
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def chunk_close():
+                        await exchange_adapter.initialize()
+                        
+                        chunk_config = config.get('position_management', {}).get('chunk_closer', {})
+                        closer = ChunkPositionCloser(
+                            exchange_adapter=exchange_adapter,
+                            config=chunk_config
+                        )
+                        
+                        # Get position
+                        position = await exchange_adapter.get_position(symbol)
+                        if not position or abs(float(position.get('quantity', 0))) < 0.0001:
+                            print(f"❌ No position to close for {symbol}")
+                            return
+                        
+                        quantity = float(position['quantity'])
+                        
+                        result = await closer.close_position_in_chunks(
+                            symbol=symbol,
+                            total_quantity=quantity,
+                            max_order_size_usd=max_size
+                        )
+                        
+                        if result.get('success'):
+                            print(f"✅ Closed {result['successful_chunks']}/{result['total_chunks']} chunks")
+                            print(f"   Total closed: ${result['total_closed_usd']:.2f}")
+                        else:
+                            print(f"❌ Chunk closing failed")
+                            if result.get('error'):
+                                print(f"   Error: {result['error']}")
+                    
+                    asyncio.run(chunk_close())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('easy-entry') or query.lower().startswith('easy-entry-strategy'):
+                # Day 48: Easy Entry Strategy
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                entry_type = parts[2].lower() if len(parts) > 2 else 'market'
+                target_size = float(parts[3]) if len(parts) > 3 else None
+                
+                if not symbol:
+                    print("Usage: easy-entry SYMBOL [market|sd-zone|sma-trend] [TARGET_SIZE_USD]")
+                    continue
+                
+                print(f"\n🎯 Easy Entry Strategy for {symbol} ({entry_type})...")
+                try:
+                    from gordon.core.strategies import EasyEntryStrategy
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def run_entry():
+                        await exchange_adapter.initialize()
+                        
+                        entry_config = config.get('position_management', {}).get('easy_entry', {})
+                        strategy = EasyEntryStrategy(
+                            exchange_adapter=exchange_adapter,
+                            config=entry_config
+                        )
+                        
+                        target_position_usd = target_size or entry_config.get('default_total_position_size_usd', 1000.0)
+                        
+                        if entry_type == 'market':
+                            result = await strategy.market_buy_loop(
+                                symbol=symbol,
+                                target_position_usd=target_position_usd
+                            )
+                            if result.get('success'):
+                                print(f"✅ Market buy loop completed")
+                                print(f"   Final position: ${result['final_position_usd']:.2f}")
+                                print(f"   Successful attempts: {result['successful_attempts']}")
+                            else:
+                                print(f"❌ Market buy loop failed")
+                        
+                        elif entry_type == 'sd-zone' or entry_type == 'supply-demand':
+                            result = await strategy.supply_demand_zone_entry(
+                                symbol=symbol,
+                                target_position_usd=target_position_usd
+                            )
+                            if result.get('success'):
+                                print(f"✅ Supply/demand zone entry executed")
+                                print(f"   Buy amount: ${result.get('buy_amount_usd', 0):.2f}")
+                            else:
+                                print(f"❌ {result.get('message', result.get('error', 'Entry failed'))}")
+                                if result.get('support_distance'):
+                                    print(f"   Support distance: {result['support_distance']:.2f}%")
+                        
+                        elif entry_type == 'sma-trend' or entry_type == 'trend':
+                            result = await strategy.sma_trend_entry(
+                                symbol=symbol,
+                                target_position_usd=target_position_usd
+                            )
+                            if result.get('success'):
+                                print(f"✅ SMA trend entry executed")
+                                print(f"   Buy amount: ${result.get('buy_amount_usd', 0):.2f}")
+                            else:
+                                print(f"❌ {result.get('message', result.get('error', 'Entry failed'))}")
+                        else:
+                            print(f"❌ Unknown entry type: {entry_type}")
+                            print("   Valid types: market, sd-zone, sma-trend")
+                    
+                    asyncio.run(run_entry())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('track-position') or query.lower().startswith('track-pnl'):
+                # Day 48: Track position for PnL management
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                entry_price = float(parts[2]) if len(parts) > 2 else None
+                quantity = float(parts[3]) if len(parts) > 3 else None
+                tp_pct = float(parts[4]) if len(parts) > 4 else None
+                sl_pct = float(parts[5]) if len(parts) > 5 else None
+                
+                if not symbol or entry_price is None or quantity is None:
+                    print("Usage: track-position SYMBOL ENTRY_PRICE QUANTITY [TAKE_PROFIT%] [STOP_LOSS%]")
+                    continue
+                
+                print(f"\n📊 Tracking position: {symbol} @ ${entry_price:.2f} (Qty: {quantity})...")
+                try:
+                    from gordon.core.utilities import PnLPositionManager
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    pnl_config = config.get('position_management', {}).get('pnl_manager', {})
+                    pnl_manager = PnLPositionManager(
+                        exchange_adapter=None,  # Not needed for tracking
+                        config=pnl_config
+                    )
+                    
+                    pnl_manager.track_position(
+                        symbol=symbol,
+                        entry_price=entry_price,
+                        quantity=quantity,
+                        take_profit_pct=tp_pct,
+                        stop_loss_pct=sl_pct
+                    )
+                    
+                    print(f"✅ Position tracking started")
+                    print(f"   Take Profit: {tp_pct or pnl_config.get('default_take_profit_pct', 10.0):.2f}%")
+                    print(f"   Stop Loss: {sl_pct or pnl_config.get('default_stop_loss_pct', 5.0):.2f}%")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('check-pnl') or query.lower().startswith('pnl-status'):
+                # Day 48: Check PnL status
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                if not symbol:
+                    print("Usage: check-pnl SYMBOL")
+                    continue
+                print(f"\n💰 Checking PnL for {symbol}...")
+                try:
+                    from gordon.core.utilities import PnLPositionManager
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def check_pnl():
+                        await exchange_adapter.initialize()
+                        
+                        pnl_config = config.get('position_management', {}).get('pnl_manager', {})
+                        pnl_manager = PnLPositionManager(
+                            exchange_adapter=exchange_adapter,
+                            config=pnl_config
+                        )
+                        
+                        # Get current price
+                        ticker = await exchange_adapter.get_ticker(symbol)
+                        if not ticker:
+                            print(f"❌ Could not get price for {symbol}")
+                            return
+                        
+                        current_price = float(ticker.get('last', 0))
+                        
+                        # Get PnL
+                        pnl_info = pnl_manager.get_position_pnl(symbol, current_price)
+                        
+                        if pnl_info:
+                            print(f"📊 Position PnL for {symbol}:")
+                            print(f"   Entry Price: ${pnl_info['entry_price']:.2f}")
+                            print(f"   Current Price: ${pnl_info['current_price']:.2f}")
+                            print(f"   Quantity: {pnl_info['quantity']:.6f}")
+                            print(f"   PnL: {pnl_info['pnl_pct']:+.2f}% (${pnl_info['pnl_usd']:+.2f})")
+                            print(f"   Position Value: ${pnl_info['position_value']:.2f}")
+                            
+                            # Check thresholds
+                            close_info = pnl_manager.check_and_close_position(symbol, current_price)
+                            if close_info and close_info.get('should_close'):
+                                print(f"   ⚠️  {close_info['reason']}")
+                            else:
+                                position = pnl_manager.positions.get(symbol.upper(), {})
+                                tp = position.get('take_profit_pct', pnl_config.get('default_take_profit_pct', 10.0))
+                                sl = position.get('stop_loss_pct', pnl_config.get('default_stop_loss_pct', 5.0))
+                                print(f"   Take Profit: +{tp:.2f}%")
+                                print(f"   Stop Loss: -{sl:.2f}%")
+                        else:
+                            print(f"❌ No tracked position for {symbol}")
+                    
+                    asyncio.run(check_pnl())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('ma-reversal') or query.lower().startswith('2xma-reversal'):
+                # Day 49: 2x MA Reversal Strategy
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                action = parts[2].lower() if len(parts) > 2 else 'execute'
+                
+                symbol = symbol or 'BTCUSDT'
+                print(f"\n📊 2x MA Reversal Strategy for {symbol}...")
+                try:
+                    from gordon.core.strategies import MAReversalStrategy
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def run_ma_reversal():
+                        await exchange_adapter.initialize()
+                        
+                        ma_config = config.get('ma_reversal_strategy', {})
+                        strategy = MAReversalStrategy(
+                            exchange_adapter=exchange_adapter,
+                            config=ma_config
+                        )
+                        strategy.symbol = symbol
+                        
+                        if action == 'execute':
+                            result = await strategy.execute(symbol)
+                            if result:
+                                print(f"✅ Strategy executed: {result.get('action')}")
+                                if result.get('signal'):
+                                    signal = result['signal']
+                                    print(f"   Signal: {signal.get('signal')}")
+                                    print(f"   Price: ${signal.get('price', 0):.2f}")
+                                    print(f"   Fast MA: ${signal.get('fast_ma', 0):.2f}")
+                                    print(f"   Slow MA: ${signal.get('slow_ma', 0):.2f}")
+                        elif action == 'check':
+                            signal_info = await strategy.check_signals(symbol)
+                            if signal_info:
+                                print(f"📊 Signal: {signal_info['signal']}")
+                                print(f"   Price: ${signal_info['price']:.2f}")
+                                print(f"   Fast MA: ${signal_info['fast_ma']:.2f}")
+                                print(f"   Slow MA: ${signal_info['slow_ma']:.2f}")
+                            else:
+                                print("❌ No signal at this time")
+                    
+                    asyncio.run(run_ma_reversal())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('enhanced-sd') or query.lower().startswith('enhanced-supply-demand'):
+                # Day 50: Enhanced Supply/Demand Zone Strategy
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                
+                if not symbol:
+                    print("Usage: enhanced-sd SYMBOL")
+                    continue
+                
+                print(f"\n🎯 Enhanced Supply/Demand Zone Strategy for {symbol}...")
+                try:
+                    from gordon.core.strategies import EnhancedSupplyDemandStrategy
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    exchange_config = config.get('exchanges', {}).get('binance', {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        'binance',
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def run_enhanced_sd():
+                        await exchange_adapter.initialize()
+                        
+                        sd_config = config.get('enhanced_sd_strategy', {})
+                        strategy = EnhancedSupplyDemandStrategy(
+                            exchange_adapter=exchange_adapter,
+                            config=sd_config
+                        )
+                        
+                        result = await strategy.execute(symbol)
+                        
+                        if result:
+                            action = result.get('action')
+                            print(f"✅ Action: {action}")
+                            
+                            if action == 'BOUGHT':
+                                print(f"   Bought: ${result.get('amount_usd', 0):.2f}")
+                            elif action == 'SOLD':
+                                print(f"   Sold: {result.get('sell_percentage', 0)*100:.0f}%")
+                                print(f"   Verified: {'✅' if result.get('verified') else '❌'}")
+                            elif action == 'NO_ZONE':
+                                print(f"   Price: ${result.get('price', 0):.2f}")
+                                print(f"   Not in any zone")
+                            else:
+                                print(f"   Message: {result.get('message', result.get('reason', 'N/A'))}")
+                    
+                    asyncio.run(run_enhanced_sd())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('quick-buy') or query.lower().startswith('qbuy'):
+                # Day 51: Quick Buy
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                usd_amount = float(parts[2]) if len(parts) > 2 else None
+                
+                if not symbol:
+                    print("Usage: quick-buy SYMBOL [USD_AMOUNT]")
+                    print("Example: quick-buy BTCUSDT 10")
+                    continue
+                
+                print(f"\n🟢 Quick Buy: {symbol}...")
+                try:
+                    from gordon.core.strategies import QuickBuySellStrategy
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    qbs_config = config.get('quick_buysell', {})
+                    exchange_name = qbs_config.get('exchange', 'binance')
+                    exchange_config = config.get('exchanges', {}).get(exchange_name, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange_name,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def quick_buy():
+                        await exchange_adapter.initialize()
+                        
+                        strategy = QuickBuySellStrategy(
+                            exchange_adapter=exchange_adapter,
+                            config=qbs_config
+                        )
+                        
+                        amount = usd_amount or qbs_config.get('usd_size', 10.0)
+                        await strategy.quick_buy_manual(symbol, amount)
+                        print(f"✅ Quick buy executed for {symbol}")
+                    
+                    asyncio.run(quick_buy())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('quick-sell') or query.lower().startswith('qsell'):
+                # Day 51: Quick Sell
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                
+                if not symbol:
+                    print("Usage: quick-sell SYMBOL")
+                    print("Example: quick-sell BTCUSDT")
+                    continue
+                
+                print(f"\n🔴 Quick Sell: {symbol}...")
+                try:
+                    from gordon.core.strategies import QuickBuySellStrategy
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    qbs_config = config.get('quick_buysell', {})
+                    exchange_name = qbs_config.get('exchange', 'binance')
+                    exchange_config = config.get('exchanges', {}).get(exchange_name, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange_name,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def quick_sell():
+                        await exchange_adapter.initialize()
+                        
+                        strategy = QuickBuySellStrategy(
+                            exchange_adapter=exchange_adapter,
+                            config=qbs_config
+                        )
+                        
+                        await strategy.quick_sell_manual(symbol)
+                        print(f"✅ Quick sell executed for {symbol}")
+                    
+                    asyncio.run(quick_sell())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('quick-monitor') or query.lower().startswith('qbs-monitor') or query.lower().startswith('start-quick-monitor'):
+                # Day 51: Start Quick Buy/Sell Monitor
+                print(f"\n📁 Starting Quick Buy/Sell file monitor...")
+                try:
+                    from gordon.core.strategies import QuickBuySellStrategy
+                    from gordon.exchanges.factory import ExchangeFactory
+                    import yaml
+                    import asyncio
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    qbs_config = config.get('quick_buysell', {})
+                    exchange_name = qbs_config.get('exchange', 'binance')
+                    exchange_config = config.get('exchanges', {}).get(exchange_name, {})
+                    exchange_adapter = ExchangeFactory.create_exchange(
+                        exchange_name,
+                        exchange_config,
+                        event_bus=None
+                    )
+                    
+                    async def start_monitor():
+                        await exchange_adapter.initialize()
+                        
+                        strategy = QuickBuySellStrategy(
+                            exchange_adapter=exchange_adapter,
+                            config=qbs_config
+                        )
+                        
+                        await strategy.initialize(qbs_config)
+                        await strategy.start_monitoring()
+                        
+                        print(f"✅ Monitoring started for file: {qbs_config.get('token_file_path', './token_addresses.txt')}")
+                        print(f"   To buy: Add '{exchange_name.upper()}_SYMBOL' to file")
+                        print(f"   To sell: Add '{exchange_name.upper()}_SYMBOL x' to file")
+                        print(f"   Press Ctrl+C to stop monitoring")
+                        
+                        # Keep running
+                        try:
+                            while True:
+                                await asyncio.sleep(1)
+                        except KeyboardInterrupt:
+                            await strategy.stop_monitoring()
+                            print("\n✅ Monitoring stopped")
+                    
+                    asyncio.run(start_monitor())
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('add-to-quick-file') or query.lower().startswith('qbs-add'):
+                # Day 51: Add token to monitoring file
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else None
+                command = parts[2].upper() if len(parts) > 2 else 'BUY'
+                
+                if not symbol:
+                    print("Usage: add-to-quick-file SYMBOL [BUY|SELL]")
+                    print("Example: add-to-quick-file BTCUSDT BUY")
+                    continue
+                
+                print(f"\n📝 Adding {symbol} ({command}) to file...")
+                try:
+                    from gordon.core.utilities import add_token_to_file
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    qbs_config = config.get('quick_buysell', {})
+                    file_path = qbs_config.get('token_file_path', './token_addresses.txt')
+                    
+                    add_token_to_file(file_path, symbol, command)
+                    print(f"✅ Added {symbol} ({command}) to {file_path}")
+                    
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
             elif query.lower().startswith('position-size'):
                 # Position Sizing Calculator
                 parts = query.split()
@@ -1060,11 +2167,11 @@ def run_interactive_mode(gordon: Agent, conversational: bool = False, exchange: 
                 print("\n" + "─" * 50)
                 continue
 
-            # Process regular queries
+            # Process regular queries - route everything through agent for LLM interpretation
             elif query:
                 print("\n🔄 Processing...\n")
                 
-                # Use conversational assistant if enabled
+                # Use conversational assistant if enabled (better context)
                 if conversational_assistant:
                     try:
                         response = asyncio.run(conversational_assistant.chat(query))
@@ -1075,11 +2182,25 @@ def run_interactive_mode(gordon: Agent, conversational: bool = False, exchange: 
                         print("="*70 + "\n")
                     except Exception as e:
                         print(f"\n❌ Error in conversational mode: {e}")
-                        # Fallback to standard mode
-                        gordon.run(query)
+                        # Fallback to agent mode
+                        try:
+                            response = asyncio.run(gordon.run(query))
+                            print("\n🤖 Gordon Response:")
+                            print(response)
+                        except Exception as e2:
+                            print(f"\n❌ Error in agent mode: {e2}")
+                            import traceback
+                            traceback.print_exc()
                 else:
-                    # Use the Agent's run method (synchronous)
-                    gordon.run(query)
+                    # Use the Agent's run method (async, with LLM interpretation)
+                    try:
+                        response = asyncio.run(gordon.run(query))
+                        print("\n🤖 Gordon Response:")
+                        print(response)
+                    except Exception as e:
+                        print(f"\n❌ Error: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
                 print("\n" + "─" * 50)
 
@@ -1093,8 +2214,15 @@ def run_interactive_mode(gordon: Agent, conversational: bool = False, exchange: 
 def run_single_query(gordon: Agent, query: str):
     """Run a single query and exit."""
     print(f"\n🔄 Processing: {query}\n")
-    # Use the Agent's run method (synchronous)
-    gordon.run(query)
+    # Use the Agent's run method (async, with LLM interpretation)
+    try:
+        response = asyncio.run(gordon.run(query))
+        print("\n🤖 Gordon Response:")
+        print(response)
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
     print()
 
 

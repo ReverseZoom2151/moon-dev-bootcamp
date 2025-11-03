@@ -419,4 +419,201 @@ class EnhancedTradingUtils:
         except Exception as e:
             logger.error(f"Error normalizing data: {e}")
             return series
+    
+    # ========== DAY 48: ENHANCED SUPPLY/DEMAND ZONES (PIVOT POINTS) ==========
+    
+    def calculate_supply_demand_zones_pivot(
+        self,
+        df: pd.DataFrame,
+        days_back: int = 1,
+        timeframe: str = '15m',
+        high_col: str = 'high',
+        low_col: str = 'low',
+        close_col: str = 'close'
+    ) -> Optional[Dict]:
+        """
+        Calculate supply and demand zones using pivot points (Day 48 method).
+        
+        Args:
+            df: DataFrame with OHLCV data
+            days_back: Number of days to look back
+            timeframe: Timeframe string (used for period calculation)
+            high_col: Column name for high prices
+            low_col: Column name for low prices
+            close_col: Column name for close prices
+            
+        Returns:
+            Dict with supply/demand zone information
+        """
+        try:
+            if df.empty or len(df) < 20:
+                return None
+            
+            # Calculate periods based on timeframe
+            if timeframe == '1m':
+                periods = days_back * 24 * 60
+            elif timeframe == '5m':
+                periods = days_back * 24 * 12
+            elif timeframe == '15m':
+                periods = days_back * 24 * 4
+            elif timeframe == '1h':
+                periods = days_back * 24
+            else:
+                periods = min(100, len(df))  # Default
+            
+            # Use available data
+            periods = min(periods, len(df))
+            df_subset = df.tail(periods).copy()
+            
+            # Calculate pivot points
+            df_subset['pivot'] = (
+                df_subset[high_col] + 
+                df_subset[low_col] + 
+                df_subset[close_col]
+            ) / 3
+            
+            df_subset['support1'] = 2 * df_subset['pivot'] - df_subset[high_col]
+            df_subset['resistance1'] = 2 * df_subset['pivot'] - df_subset[low_col]
+            df_subset['support2'] = (
+                df_subset['pivot'] - 
+                (df_subset[high_col] - df_subset[low_col])
+            )
+            df_subset['resistance2'] = (
+                df_subset['pivot'] + 
+                (df_subset[high_col] - df_subset[low_col])
+            )
+            
+            # Get latest values
+            current_price = float(df_subset[close_col].iloc[-1])
+            latest_pivot = float(df_subset['pivot'].iloc[-1])
+            latest_support = float(df_subset['support1'].iloc[-1])
+            latest_resistance = float(df_subset['resistance1'].iloc[-1])
+            
+            # Determine if current price is near support/demand zone
+            near_support_threshold = 0.02  # 2%
+            near_support = abs(current_price - latest_support) / current_price < near_support_threshold
+            near_resistance = abs(current_price - latest_resistance) / current_price < near_support_threshold
+            
+            support_distance = ((current_price - latest_support) / current_price) * 100
+            resistance_distance = ((latest_resistance - current_price) / current_price) * 100
+            
+            return {
+                'current_price': current_price,
+                'pivot': latest_pivot,
+                'support': latest_support,
+                'resistance': latest_resistance,
+                'support2': float(df_subset['support2'].iloc[-1]),
+                'resistance2': float(df_subset['resistance2'].iloc[-1]),
+                'near_support': near_support,
+                'near_resistance': near_resistance,
+                'support_distance': support_distance,
+                'resistance_distance': resistance_distance
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating pivot supply/demand zones: {e}")
+            return None
+    
+    # ========== DAY 48: TREND CHECKING UTILITIES ==========
+    
+    def check_trend_sma(
+        self,
+        df: pd.DataFrame,
+        periods: int = 20,
+        close_col: str = 'close'
+    ) -> Optional[Dict]:
+        """
+        Check if price is in uptrend using SMA (Day 48 method).
+        
+        Args:
+            df: DataFrame with price data
+            periods: SMA period
+            close_col: Column name for close prices
+            
+        Returns:
+            Dict with trend information
+        """
+        try:
+            if df.empty or len(df) < periods:
+                return None
+            
+            # Calculate SMA
+            sma = self.calculate_sma(df[close_col], window=periods)
+            
+            if sma.empty:
+                return None
+            
+            current_price = float(df[close_col].iloc[-1])
+            current_sma = float(sma.iloc[-1])
+            
+            is_uptrend = current_price > current_sma
+            trend_strength = ((current_price - current_sma) / current_sma) * 100
+            
+            return {
+                'is_uptrend': is_uptrend,
+                'price': current_price,
+                'sma': current_sma,
+                'trend_strength': trend_strength
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking trend: {e}")
+            return None
+    
+    def check_trend_ema(
+        self,
+        df: pd.DataFrame,
+        fast_period: int = 12,
+        slow_period: int = 26,
+        close_col: str = 'close'
+    ) -> Optional[Dict]:
+        """
+        Check trend using EMA crossover (Day 48 method).
+        
+        Args:
+            df: DataFrame with price data
+            fast_period: Fast EMA period
+            slow_period: Slow EMA period
+            close_col: Column name for close prices
+            
+        Returns:
+            Dict with trend information
+        """
+        try:
+            if df.empty or len(df) < slow_period:
+                return None
+            
+            # Calculate EMAs
+            ema_fast = self.calculate_ema(df[close_col], window=fast_period)
+            ema_slow = self.calculate_ema(df[close_col], window=slow_period)
+            
+            if ema_fast.empty or ema_slow.empty:
+                return None
+            
+            current_price = float(df[close_col].iloc[-1])
+            current_ema_fast = float(ema_fast.iloc[-1])
+            current_ema_slow = float(ema_slow.iloc[-1])
+            
+            # Trend signals
+            trend_signals = 0
+            if current_price > current_ema_fast:
+                trend_signals += 1
+            if current_price > current_ema_slow:
+                trend_signals += 1
+            if current_ema_fast > current_ema_slow:
+                trend_signals += 1
+            
+            is_uptrend = trend_signals >= 2
+            
+            return {
+                'is_uptrend': is_uptrend,
+                'trend_strength': trend_signals,
+                'price': current_price,
+                'ema_fast': current_ema_fast,
+                'ema_slow': current_ema_slow
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking EMA trend: {e}")
+            return None
 
