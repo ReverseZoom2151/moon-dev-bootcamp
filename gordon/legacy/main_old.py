@@ -16,8 +16,8 @@ from datetime import datetime
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from exchange_orchestrator.core.orchestrator import ExchangeOrchestrator
-from exchange_orchestrator.utilities.logger import setup_logger
+from core.orchestrator import ExchangeOrchestrator
+from utilities.logger import setup_logger
 
 
 async def main():

@@ -1,0 +1,165 @@
+# Gordon Configuration File
+# =========================
+# Financial Research + Trading Agent Configuration
+
+# Agent Settings
+agent:
+  name: "Gordon"
+  version: "1.0.0"
+  max_steps: 20
+  max_steps_per_task: 5
+  default_model: "gpt-4"
+
+# Trading Configuration
+trading:
+  # Risk Management
+  risk:
+    max_position_size: 0.1  # 10% of portfolio max per position
+    max_drawdown: 0.2  # 20% max drawdown before stopping
+    daily_loss_limit: 0.05  # 5% daily loss limit
+    risk_per_trade: 0.02  # 2% risk per trade
+    correlation_limit: 0.7  # Max correlation between positions
+
+  # Position Sizing
+  position:
+    default_size: 0.01  # 1% default position size
+    min_size: 0.001  # 0.1% minimum
+    max_size: 0.1  # 10% maximum
+
+  # Stop Loss & Take Profit
+  stops:
+    default_stop_loss: 0.05  # 5% stop loss
+    default_take_profit: 0.1  # 10% take profit
+    trailing_stop: true
+    trailing_distance: 0.02  # 2% trailing distance
+
+# Strategy Defaults
+strategies:
+  sma:
+    short_period: 10
+    long_period: 30
+
+  rsi:
+    period: 14
+    oversold: 30
+    overbought: 70
+
+  vwap:
+    lookback_period: 20
+    std_dev_multiplier: 2.0
+
+  bollinger:
+    period: 20
+    std_dev: 2.0
+
+  mean_reversion:
+    lookback_period: 20
+    z_score_threshold: 2.0
+
+# Backtesting
+backtesting:
+  initial_capital: 10000
+  commission: 0.001  # 0.1% commission
+  slippage: 0.0005  # 0.05% slippage
+
+  optimization:
+    metric: "sharpe_ratio"  # or "total_return", "win_rate"
+    max_iterations: 100
+
+# Exchange Configuration
+exchanges:
+  default: "binance"
+
+  binance:
+    enabled: true
+    testnet: false
+    rate_limit: 1200  # requests per minute
+
+  bitfinex:
+    enabled: false
+    testnet: false
+    rate_limit: 60
+
+  hyperliquid:
+    enabled: false
+    testnet: true
+
+# Market Data
+market_data:
+  default_timeframe: "1h"
+  available_timeframes: ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+  max_candles: 1000
+  stream_buffer_size: 100
+
+# Algo Orders
+algo_orders:
+  twap:
+    default_slices: 10
+    min_interval_seconds: 60
+
+  vwap:
+    lookback_minutes: 30
+    volume_participation: 0.1  # 10% of volume
+
+  iceberg:
+    visible_percentage: 0.2  # 20% visible
+    randomize: true
+
+# Research Settings (Dexter integration)
+research:
+  # Financial data providers
+  providers:
+    financialdatasets: true
+    yahoo_finance: false
+    alpha_vantage: false
+
+  # Analysis defaults
+  analysis:
+    earnings_lookback_quarters: 8
+    price_history_days: 365
+    peer_comparison: true
+
+# Notification Settings
+notifications:
+  enabled: false
+
+  trades:
+    on_execution: true
+    on_fill: true
+    on_cancel: false
+
+  risk:
+    on_limit_breach: true
+    on_drawdown_alert: true
+
+  research:
+    on_earnings: false
+    on_news: false
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "gordon.log"
+  max_size_mb: 100
+  backup_count: 5
+
+  components:
+    agent: "INFO"
+    trading: "INFO"
+    research: "INFO"
+    risk: "WARNING"
+    market_data: "INFO"
+
+# Performance Tracking
+performance:
+  track_trades: true
+  track_pnl: true
+  save_to_database: false
+  export_format: "json"  # json, csv, parquet
+
+# Safety Settings
+safety:
+  dry_run: true  # IMPORTANT: Set to false for live trading
+  require_confirmation: true  # Require user confirmation for trades
+  max_daily_trades: 50
+  emergency_stop: true  # Enable emergency stop button

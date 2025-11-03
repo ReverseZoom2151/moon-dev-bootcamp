@@ -10,10 +10,21 @@ import json
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from hyperliquid.info import Info
-from hyperliquid.exchange import Exchange as HyperLiquidExchange
-from hyperliquid.utils import constants
-from eth_account import Account
+try:
+    from hyperliquid.info import Info
+    from hyperliquid.exchange import Exchange as HyperLiquidExchange
+    from hyperliquid.utils import constants
+    HYPERLIQUID_AVAILABLE = True
+except ImportError:
+    HYPERLIQUID_AVAILABLE = False
+    Info = None
+    HyperLiquidExchange = None
+    constants = None
+
+try:
+    from eth_account import Account
+except ImportError:
+    Account = None
 
 from .base import BaseExchange
 
@@ -35,6 +46,16 @@ class HyperLiquidAdapter(BaseExchange):
         """Initialize HyperLiquid adapter."""
         super().__init__(credentials, event_bus)
 
+        if not HYPERLIQUID_AVAILABLE:
+            self.logger.warning("HyperLiquid package not installed. Install with: pip install hyperliquid-python")
+            self.private_key = None
+            self.account_address = None
+            self.info = None
+            self.exchange = None
+            self.agent_private_key = None
+            self.is_mainnet = True
+            return
+
         self.private_key = credentials.get("private_key")
         self.account_address = None
         self.info = None
@@ -44,6 +65,10 @@ class HyperLiquidAdapter(BaseExchange):
 
     async def initialize(self):
         """Initialize HyperLiquid connection."""
+        if not HYPERLIQUID_AVAILABLE:
+            self.logger.warning("Cannot initialize HyperLiquid - package not installed")
+            return False
+
         try:
             self.logger.info("Initializing HyperLiquid connection...")
 

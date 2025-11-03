@@ -13,7 +13,22 @@ from datetime import datetime
 # Backtesting frameworks
 import backtrader as bt
 import backtrader.analyzers as btanalyzers
-from backtesting import Backtest
+
+# Import the external backtesting package, not the local module
+import sys
+import importlib
+# Temporarily remove the parent directory from path to import external backtesting
+parent_dir = str(__file__).rsplit('gordon', 1)[0] + 'gordon'
+if parent_dir in sys.path:
+    sys.path.remove(parent_dir)
+try:
+    from backtesting import Backtest
+except ImportError:
+    # If external package not installed, create a dummy
+    Backtest = None
+# Add the parent directory back
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 # Import strategies
 from ..strategies.backtrader import SmaCrossStrategy

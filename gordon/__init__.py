@@ -1,24 +1,17 @@
 """
-Exchange Orchestrator for ATC Bootcamp Projects (Days 2-56)
-=============================================================
-
-A unified trading system that consolidates all functionality from Days 2-56
-of the ATC Bootcamp, providing a single interface for multi-exchange trading,
-strategy management, and operational features.
-
-Author: ATC Bootcamp
-Version: 1.0.0
+Gordon - Financial Research & Trading Agent
+============================================
+Combines fundamental analysis with technical trading.
 """
 
 __version__ = "1.0.0"
-__author__ = "ATC Bootcamp"
+__author__ = "Gordon Team"
 
-from .core.orchestrator import ExchangeOrchestrator
-from .core.event_bus import EventBus
-from .exchanges.base import BaseExchange
+# Make imports work properly
+import sys
+from pathlib import Path
 
-__all__ = [
-    "ExchangeOrchestrator",
-    "EventBus",
-    "BaseExchange"
-]
+# Add gordon directory to path for imports
+gordon_path = Path(__file__).parent
+if str(gordon_path) not in sys.path:
+    sys.path.insert(0, str(gordon_path))
