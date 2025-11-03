@@ -66,6 +66,210 @@ backtesting:
     metric: "sharpe_ratio"  # or "total_return", "win_rate"
     max_iterations: 100
 
+  liquidation:
+    default_data_dir: './output_data'
+    resample_frequency: '1T'  # 1 minute
+
+  # Genetic Programming Evolution (Day 29)
+  gp_evolution:
+    enabled: false  # Set to true to enable GP evolution
+    population_size: 200  # Number of strategies per generation
+    generations: 30  # Number of evolution generations
+    crossover_probability: 0.5  # Crossover rate
+    mutation_probability: 0.2  # Mutation rate
+    tournament_size: 3  # Tournament selection size
+    hall_of_fame_size: 5  # Number of best strategies to keep
+    min_depth: 1  # Minimum GP tree depth
+    max_depth: 4  # Maximum GP tree depth
+    use_multiprocessing: true  # Use parallel evaluation
+    results_path: './evolved_strategies'  # Output directory
+    fitness_weights:
+      return: 1.0  # Weight for return %
+      sharpe: 0.3  # Weight for Sharpe ratio
+      drawdown: -0.1  # Penalty for drawdown
+      complexity: 0.005  # Penalty for complexity
+
+# Conversation Memory (Day 30)
+conversation:
+  enabled: true  # Enable conversational memory
+  memory_dir: './conversation_memory'  # Directory for memory files
+  max_memory_tokens: 6000  # Maximum tokens in memory
+  default_symbols:  # Default symbols for market context
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - ADAUSDT
+    - SOLUSDT
+
+# Data Collection
+data_collection:
+  liquidation:
+    output_dir: './output_data'
+    min_usd_size: 3000
+    default_symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'WIFUSDT']
+
+  # Historical Data Providers (Day 31-32)
+  historical_data:
+    # Binance settings
+    binance:
+      enabled: true
+      cache_dir: './binance_data'
+      fetch_limit: 1000  # Max candles per request
+      rate_limit_delay: 0.2  # Seconds between requests
+      retry_attempts: 3
+      default_symbols: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT']
+    
+    # Bitfinex settings
+    bitfinex:
+      enabled: true
+      cache_dir: './bitfinex_data'
+      fetch_limit: 5000  # Max candles per request
+      rate_limit_delay: 0.5  # Seconds between requests
+      retry_attempts: 3
+      default_symbols: ['BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD', 'ADAUSD']
+    
+    # Yahoo Finance settings
+    yahoo:
+      enabled: true
+      cache_dir: './yahoo_data'
+      hourly_fetch_days: 728  # Max days for hourly data
+      default_start_date: '2000-01-01'  # Default for daily data
+      rate_limit_delay: 1.0  # Seconds between requests
+      default_symbols:
+        stocks: ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA']
+        forex: ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'AUDUSD=X']
+        futures: ['ES=F', 'NQ=F', 'YM=F', 'RTY=F']
+    aggregation_period: '5min'
+
+# ML Indicator Evaluation (Day 33)
+ml:
+  indicator_evaluation:
+    enabled: true
+    results_dir: './ml_results'
+    target_column: 'Close'
+    target_shift: -1  # Predict next period
+    test_size: 0.2
+    shuffle_split: false  # Time series data
+    calc_permutation_importance: false
+    permutation_n_repeats: 5
+    permutation_sample_size: 1000
+    use_models:
+      - LinearRegression
+      - RandomForestRegressor
+      - XGBRegressor
+  
+  indicator_looping:
+    enabled: true
+    generations: 10
+    indicators_per_lib: 3
+    random_seed: 42
+  
+  indicator_ranking:
+    r2_filter_threshold: 0.95  # Filter overfit features
+    top_n_features: 50
+
+# Social Signal Trading (Day 36)
+social_trading:
+  enabled: false  # Set to true to enable automated trading
+  log_file: './social_trading_log.csv'
+  polling_interval: 4  # Seconds between checks
+  min_confidence: 0.5  # Minimum confidence to detect opportunity
+  min_execution_confidence: 0.6  # Minimum confidence to execute trade
+  max_trade_amount: 100  # USDT per trade
+  max_slippage: 500  # Basis points (0.5%)
+  
+  token_patterns:
+    - '\$([A-Z]{2,6})\b'
+    - '\b([A-Z]{2,6})USDT\b'
+    - '\b([A-Z]{2,6})/USDT\b'
+    - '#([A-Za-z0-9]{2,10})'
+  
+  opportunity_keywords:
+    - 'new listing'
+    - 'now live'
+    - 'trading starts'
+    - 'available now'
+    - 'just listed'
+    - 'spot trading'
+    - 'binance listing'
+    - 'trading pair'
+    - 'pump'
+    - 'moon'
+    - 'gem'
+    - 'breakout'
+    - 'bullish'
+    - 'buy signal'
+  
+  target_accounts: []  # List of Twitter usernames to monitor
+
+# Trader Intelligence (Day 38)
+trader_intelligence:
+  enabled: true
+  output_dir: './trader_intelligence_output'
+  min_trade_size_usd: 1000.0
+  max_trade_size_usd: 1000000.0
+  fetch_limit: 1000
+  max_requests: 100
+  trader_classification:
+    whale_threshold: 1000000.0
+    institutional_threshold: 50000.0
+    professional_threshold: 10000.0
+
+# Whale Tracking (Day 44)
+whale_tracking:
+  enabled: true
+  output_dir: './whale_tracking_output'
+  whale_threshold_usd: 100000.0
+  institutional_threshold_usd: 250000.0
+  min_position_value: 25000.0
+  top_n_positions: 25
+  update_interval_minutes: 30
+
+# Position Sizing (Day 44)
+position_sizing:
+  default_leverage: 1
+  max_leverage: 10
+  default_risk_percent: 0.02  # 2%
+  default_position_percent: 0.95  # 95% of balance
+
+# Moon Dev API (Day 45)
+moondev_api:
+  enabled: true
+  api_key: ""  # Set via MOONDEV_API_KEY env var
+  base_url: "http://api.moondev.com:8000"
+  data_dir: "./data/moondev_api"
+
+# Liquidation Hunter Strategy (Day 45)
+liquidation_hunter:
+  enabled: true
+  exchange: "binance"
+  tokens_to_analyze:
+    - "BTCUSDT"
+    - "ETHUSDT"
+    - "BNBUSDT"
+    - "SOLUSDT"
+  liquidation_lookback_minutes: 5
+  liquidation_trigger_amount: 100000  # $100k
+  min_position_value: 25000  # $25k minimum whale position
+  analysis_interval_minutes: 15
+  position_size_usd: 10
+  leverage: 5
+  take_profit_percent: 1.0
+  stop_loss_percent: -6.0
+
+# Enhanced Market Making (Day 45)
+enhanced_market_making:
+  enabled: true
+  use_orderbook_analysis: true
+  dynamic_spread_adjustment: true
+  whale_threshold_usd: 50000
+  buy_under: 0.0004
+  sell_over: 0.001
+  target_size: 350  # USD
+  position_threshold: 0.97
+  min_position_value: 1.0
+  sleep_time: 15  # seconds
+
 # Exchange Configuration
 exchanges:
   default: "binance"
@@ -118,6 +322,26 @@ research:
     earnings_lookback_quarters: 8
     price_history_days: 365
     peer_comparison: true
+
+  # Social Media Analysis (Day 28)
+  social:
+    enabled: false  # Set to true to enable Twitter sentiment analysis
+    sentiment_method: "composite"  # Options: "vader", "textblob", "openai", "composite"
+    openai_api_key: ""  # Optional: For OpenAI sentiment analysis
+    
+    twitter:
+      enabled: false  # Set to true to enable Twitter data collection
+      username: ""  # Twitter username
+      email: ""  # Twitter email
+      password: ""  # Twitter password (store securely!)
+      cookies_file: "./cookies.json"  # Path to cookies file
+      ignore_list:  # Words to ignore in tweets
+        - "t.co"
+        - "discord"
+        - "join"
+        - "telegram"
+        - "discount"
+        - "pay"
 
 # Notification Settings
 notifications:

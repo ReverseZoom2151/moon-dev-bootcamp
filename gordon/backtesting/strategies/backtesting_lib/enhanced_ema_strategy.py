@@ -13,8 +13,22 @@ Features:
 """
 
 import pandas as pd
-import pandas_ta as ta
-from backtesting.lib import crossover, TrailingStrategy
+# Import external backtesting package, avoiding conflict with gordon.backtesting
+from ...utils.backtesting_import import get_backtesting_crossover, get_backtesting_trailing_strategy
+
+crossover = get_backtesting_crossover()
+TrailingStrategy = get_backtesting_trailing_strategy()
+
+if TrailingStrategy is None:
+    raise ImportError("External 'backtesting' package not installed. Install with: pip install backtesting")
+
+# Optional pandas_ta import
+try:
+    import pandas_ta as ta
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    PANDAS_TA_AVAILABLE = False
+    ta = None
 
 
 class EnhancedEMAStrategy(TrailingStrategy):
@@ -48,6 +62,9 @@ class EnhancedEMAStrategy(TrailingStrategy):
         low = pd.Series(self.data.Low)
         volume = pd.Series(self.data.Volume)
 
+        if not PANDAS_TA_AVAILABLE:
+            raise ImportError("pandas_ta is required for EnhancedEMAStrategy. Please install it: pip install pandas-ta")
+        
         # EMAs
         self.ema_fast = self.I(ta.ema, close, self.ema_fast_period)
         self.ema_slow = self.I(ta.ema, close, self.ema_slow_period)

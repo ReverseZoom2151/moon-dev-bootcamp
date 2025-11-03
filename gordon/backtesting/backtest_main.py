@@ -12,6 +12,21 @@ Strategies Included:
 - Day 17: Enhanced EMA Strategy with Optimization (backtesting.py)
 - Day 18: Multi-timeframe Breakout Strategy with Bollinger Bands (backtesting.py)
 - Day 20: Mean Reversion Strategy with SMA (backtesting.py)
+- Day 21: Liquidation-Based Strategies (backtesting.py)
+  - Long on S LIQ (Short Liquidations)
+  - Long on L LIQ (Long Liquidations with S LIQ exit)
+- Day 22: Short Liquidation Strategies (backtesting.py)
+  - Short on S LIQ (Short Liquidations with L LIQ exit)
+  - Alpha Decay Testing (measure performance degradation with delays)
+- Day 23: Data Filtering & Kalman Filter Strategy (backtesting.py)
+  - Data filtering utilities (exclude summer, market hours, first/last hour)
+  - Kalman Filter Breakout/Reversal strategy
+  - Batch backtest template
+- Day 29: Genetic Programming Strategy Evolution (backtesting.py)
+  - Automated strategy discovery using GP
+  - Evolves mathematical expressions for trading signals
+  - Multi-objective optimization (Return, Sharpe, Drawdown)
+  - Hall of Fame for best strategies
 """
 
 import sys
@@ -19,7 +34,7 @@ import os
 import json
 import logging
 import warnings
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,17 +59,19 @@ class ComprehensiveBacktester:
     Provides a clean interface for running and comparing strategies.
     """
 
-    def __init__(self, initial_cash: float = 10000, commission: float = 0.001):
+    def __init__(self, initial_cash: float = 10000, commission: float = 0.001, config: Optional[Dict] = None):
         """
         Initialize the comprehensive backtester.
 
         Args:
             initial_cash: Starting capital for backtests
             commission: Trading commission rate
+            config: Optional configuration dictionary
         """
+        self.config = config or {}
         self.initial_cash = initial_cash
         self.commission = commission
-        self.runner = BacktestRunner(initial_cash, commission)
+        self.runner = BacktestRunner(initial_cash, commission, config=self.config)
         self.optimizer = StrategyOptimizer()
         self.data_fetcher = DataFetcher()
 
@@ -75,13 +92,25 @@ class ComprehensiveBacktester:
             - 'enhanced_ema': Day 17 Enhanced EMA
             - 'multitimeframe_breakout': Day 18 MTF Breakout
             - 'mean_reversion': Day 20 Mean Reversion
+            - 'liquidation_sliq': Day 21 Liquidation S LIQ strategy
+            - 'liquidation_lliq': Day 21 Liquidation L LIQ strategy
+            - 'liquidation_short_sliq': Day 22 Liquidation Short S LIQ strategy
+            - 'alpha_decay': Day 22 Alpha Decay test
+            - 'kalman_breakout': Day 23 Kalman Filter Breakout/Reversal strategy
+            - 'evolve_strategy': Day 29 GP Strategy Evolution
         """
         strategy_methods = {
             'sma_crossover': self.runner.run_sma_crossover_backtest,
             'stochrsi_bollinger': self.runner.run_stochrsi_bollinger_backtest,
             'enhanced_ema': self.runner.run_enhanced_ema_backtest,
             'multitimeframe_breakout': self.runner.run_multitimeframe_breakout_backtest,
-            'mean_reversion': self.runner.run_mean_reversion_backtest
+            'mean_reversion': self.runner.run_mean_reversion_backtest,
+            'liquidation_sliq': self.runner.run_liquidation_sliq_backtest,
+            'liquidation_lliq': self.runner.run_liquidation_lliq_backtest,
+            'liquidation_short_sliq': self.runner.run_liquidation_short_sliq_backtest,
+            'alpha_decay': self.runner.run_alpha_decay_test,
+            'kalman_breakout': self.runner.run_kalman_breakout_backtest,
+            'evolve_strategy': self.runner.evolve_strategy_gp
         }
 
         if strategy_name not in strategy_methods:

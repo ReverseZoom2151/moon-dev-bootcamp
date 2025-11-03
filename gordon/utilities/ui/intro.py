@@ -41,3 +41,4 @@ def print_intro():
     print("Ask me anything about financials, trading, or both!")
     print("Type 'help' for examples or 'exit' to quit.")
     print()
+

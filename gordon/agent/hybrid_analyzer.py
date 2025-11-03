@@ -2,16 +2,29 @@
 Hybrid Analyzer for Gordon
 ==========================
 Combines fundamental analysis with technical trading for comprehensive insights.
-This is Gordon's secret sauce - the fusion of Warren Buffett and Jim Simons!
+Day 28: Now includes social sentiment analysis as a third dimension!
+This is Gordon's secret sauce - the fusion of Warren Buffett, Jim Simons, and social media intelligence!
 """
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import logging
 
 from .agent import Agent
 from .config_manager import get_config
+
+logger = logging.getLogger(__name__)
+
+# Import social media modules
+try:
+    from ..research.social import TwitterCollector, SentimentAnalyzer
+    SOCIAL_AVAILABLE = True
+except ImportError:
+    SOCIAL_AVAILABLE = False
+    TwitterCollector = None
+    SentimentAnalyzer = None
 
 
 class HybridAnalyzer:
@@ -22,16 +35,36 @@ class HybridAnalyzer:
         self.agent = Agent()
         self.config = get_config()
         self.executor = ThreadPoolExecutor(max_workers=5)
+        
+        # Initialize social media components if available
+        self.twitter_collector = None
+        self.sentiment_analyzer = None
+        if SOCIAL_AVAILABLE:
+            try:
+                social_config = self.config.get('research', {}).get('social', {})
+                twitter_config = social_config.get('twitter', {})
+                if twitter_config.get('enabled', False):
+                    self.twitter_collector = TwitterCollector(twitter_config)
+                    self.sentiment_analyzer = SentimentAnalyzer({
+                        'method': social_config.get('sentiment_method', 'composite'),
+                        'openai_api_key': social_config.get('openai_api_key')
+                    })
+                    logger.info("Social media analysis enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize social media components: {e}")
 
-    def analyze_stock(self, symbol: str, include_trading: bool = True) -> Dict[str, Any]:
+    async def analyze_stock(self, symbol: str, include_trading: bool = True, include_sentiment: bool = True) -> Dict[str, Any]:
         """Perform comprehensive hybrid analysis on a stock.
+        
+        Day 28 Enhanced: Now includes social sentiment analysis!
 
         Args:
             symbol: Stock ticker symbol (e.g., "AAPL")
             include_trading: Whether to include trading recommendations
+            include_sentiment: Whether to include social sentiment analysis
 
         Returns:
-            Comprehensive analysis combining fundamental and technical insights
+            Comprehensive analysis combining fundamental, technical, and sentiment insights
         """
         print(f"\n🔬 Gordon is analyzing {symbol}...")
         print("=" * 50)
@@ -43,12 +76,23 @@ class HybridAnalyzer:
         # Gather technical data
         print("\n📈 Performing technical analysis...")
         technical_analysis = self._analyze_technicals(symbol)
+        
+        # Gather sentiment data (Day 28)
+        sentiment_analysis = {}
+        if include_sentiment and self.sentiment_analyzer and self.twitter_collector:
+            print("\n📱 Analyzing social sentiment...")
+            sentiment_analysis = await self._analyze_sentiment(symbol)
 
         # Generate trading signals
         trading_signals = {}
         if include_trading:
             print("\n🎯 Generating trading signals...")
-            trading_signals = self._generate_trading_signals(symbol, fundamental_analysis, technical_analysis)
+            trading_signals = self._generate_trading_signals(
+                symbol, 
+                fundamental_analysis, 
+                technical_analysis,
+                sentiment_analysis
+            )
 
         # Combine insights
         print("\n🧠 Synthesizing insights...")
@@ -56,7 +100,8 @@ class HybridAnalyzer:
             symbol,
             fundamental_analysis,
             technical_analysis,
-            trading_signals
+            trading_signals,
+            sentiment_analysis
         )
 
         return combined_insights
@@ -132,30 +177,95 @@ class HybridAnalyzer:
             print(f"⚠️ Technical analysis error: {e}")
             return {}
 
+    async def _analyze_sentiment(self, symbol: str) -> Dict[str, Any]:
+        """
+        Analyze social sentiment for a symbol (Day 28).
+        
+        Args:
+            symbol: Trading symbol to analyze
+            
+        Returns:
+            Dictionary with sentiment analysis results
+        """
+        if not self.twitter_collector or not self.sentiment_analyzer:
+            return {}
+        
+        try:
+            # Collect tweets about the symbol
+            tweets = await self.twitter_collector.search_symbol_tweets(
+                symbol=symbol,
+                minimum_tweets=50  # Collect at least 50 tweets
+            )
+            
+            if not tweets:
+                logger.warning(f"No tweets found for {symbol}")
+                return {
+                    'sentiment': 'neutral',
+                    'score': 0.0,
+                    'confidence': 0.0,
+                    'tweet_count': 0
+                }
+            
+            # Analyze sentiment for each tweet
+            analyses = []
+            for tweet in tweets[:100]:  # Limit to 100 tweets for analysis
+                analysis = await self.sentiment_analyzer.analyze_async(tweet['text'])
+                analyses.append(analysis)
+            
+            # Get aggregate sentiment
+            aggregate = self.sentiment_analyzer.get_aggregate_sentiment(analyses)
+            
+            # Extract symbols mentioned
+            all_symbols = set()
+            for tweet in tweets:
+                symbols = self.sentiment_analyzer.extract_symbols(tweet['text'])
+                all_symbols.update(symbols)
+            
+            return {
+                'sentiment': aggregate['sentiment'],
+                'score': aggregate['average_score'],
+                'confidence': aggregate['positive_pct'] / 100 if aggregate['sentiment'] == 'positive' else aggregate['negative_pct'] / 100,
+                'tweet_count': len(tweets),
+                'positive_pct': aggregate['positive_pct'],
+                'negative_pct': aggregate['negative_pct'],
+                'neutral_pct': aggregate['neutral_pct'],
+                'mentioned_symbols': list(all_symbols),
+                'details': aggregate
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing sentiment for {symbol}: {e}")
+            return {}
+
     def _generate_trading_signals(
         self,
         symbol: str,
         fundamental_data: Dict[str, Any],
-        technical_data: Dict[str, Any]
+        technical_data: Dict[str, Any],
+        sentiment_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Generate trading signals based on combined analysis."""
+        """Generate trading signals based on combined analysis (now includes sentiment)."""
         try:
             signals = {
                 'fundamental_score': self._calculate_fundamental_score(fundamental_data),
                 'technical_score': self._calculate_technical_score(technical_data),
+                'sentiment_score': self._calculate_sentiment_score(sentiment_data) if sentiment_data else 50,
                 'combined_score': 0,
                 'recommendation': 'HOLD',
                 'confidence': 'LOW',
                 'strategies': []
             }
 
-            # Calculate combined score (weighted average)
-            fundamental_weight = 0.4  # 40% weight on fundamentals
-            technical_weight = 0.6  # 60% weight on technicals
+            # Calculate combined score (weighted average with sentiment)
+            # Day 28: Now includes sentiment as third dimension
+            fundamental_weight = 0.35  # 35% weight on fundamentals
+            technical_weight = 0.50    # 50% weight on technicals
+            sentiment_weight = 0.15    # 15% weight on sentiment
 
             signals['combined_score'] = (
                 signals['fundamental_score'] * fundamental_weight +
-                signals['technical_score'] * technical_weight
+                signals['technical_score'] * technical_weight +
+                signals['sentiment_score'] * sentiment_weight
             )
 
             # Generate recommendation
@@ -191,18 +301,51 @@ class HybridAnalyzer:
             print(f"⚠️ Signal generation error: {e}")
             return {}
 
+    def _calculate_sentiment_score(self, sentiment_data: Dict[str, Any]) -> float:
+        """
+        Calculate sentiment score (0-100) from sentiment analysis.
+        
+        Args:
+            sentiment_data: Dictionary with sentiment analysis results
+            
+        Returns:
+            Sentiment score from 0-100
+        """
+        if not sentiment_data:
+            return 50.0  # Neutral if no data
+        
+        sentiment = sentiment_data.get('sentiment', 'neutral')
+        score = sentiment_data.get('score', 0.0)
+        confidence = sentiment_data.get('confidence', 0.5)
+        tweet_count = sentiment_data.get('tweet_count', 0)
+        
+        # Convert sentiment score (-1 to 1) to (0 to 100)
+        base_score = 50 + (score * 50)
+        
+        # Adjust based on confidence
+        if tweet_count < 10:
+            # Low confidence if few tweets
+            base_score = 50 + (base_score - 50) * 0.5
+        elif tweet_count > 100:
+            # Higher confidence with more tweets
+            base_score = 50 + (base_score - 50) * 1.2
+        
+        # Clamp to 0-100
+        return max(0, min(100, base_score))
+
     def _synthesize_insights(
         self,
         symbol: str,
         fundamental_data: Dict[str, Any],
         technical_data: Dict[str, Any],
-        trading_signals: Dict[str, Any]
+        trading_signals: Dict[str, Any],
+        sentiment_data: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Synthesize all analysis into actionable insights."""
+        """Synthesize all analysis into actionable insights (now includes sentiment)."""
         return {
             'symbol': symbol,
             'timestamp': datetime.now().isoformat(),
-            'analysis_type': 'HYBRID',
+            'analysis_type': 'HYBRID_WITH_SENTIMENT' if sentiment_data else 'HYBRID',
 
             'fundamental_analysis': {
                 'summary': 'Strong fundamentals' if fundamental_data else 'Analysis pending',
@@ -213,11 +356,16 @@ class HybridAnalyzer:
                 'summary': self._summarize_technicals(technical_data),
                 'details': technical_data
             },
+            
+            'sentiment_analysis': {
+                'summary': self._summarize_sentiment(sentiment_data) if sentiment_data else 'Not available',
+                'details': sentiment_data or {}
+            },
 
             'trading_signals': trading_signals,
 
             'gordon_insights': {
-                'market_sentiment': self._assess_market_sentiment(technical_data),
+                'market_sentiment': self._assess_market_sentiment(technical_data, sentiment_data),
                 'risk_level': self._assess_risk_level(fundamental_data, technical_data),
                 'time_horizon': self._recommend_time_horizon(trading_signals),
                 'key_levels': {
@@ -227,10 +375,103 @@ class HybridAnalyzer:
                 }
             },
 
-            'action_items': self._generate_action_items(symbol, trading_signals),
+            'action_items': self._generate_action_items(symbol, trading_signals, sentiment_data),
 
-            'disclaimer': "This analysis combines fundamental and technical factors. Always do your own research and consider your risk tolerance."
+            'disclaimer': "This analysis combines fundamental, technical, and sentiment factors. Always do your own research and consider your risk tolerance."
         }
+
+    def _summarize_sentiment(self, sentiment_data: Dict[str, Any]) -> str:
+        """Create a summary of sentiment analysis."""
+        if not sentiment_data:
+            return "No sentiment data available"
+        
+        sentiment = sentiment_data.get('sentiment', 'neutral')
+        score = sentiment_data.get('score', 0.0)
+        tweet_count = sentiment_data.get('tweet_count', 0)
+        
+        if sentiment == 'positive':
+            return f"Positive sentiment ({score:.2f}) from {tweet_count} tweets"
+        elif sentiment == 'negative':
+            return f"Negative sentiment ({score:.2f}) from {tweet_count} tweets"
+        else:
+            return f"Neutral sentiment ({score:.2f}) from {tweet_count} tweets"
+
+    def _assess_market_sentiment(
+        self,
+        technical_data: Dict[str, Any],
+        sentiment_data: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Assess overall market sentiment (now includes social sentiment)."""
+        signals = []
+
+        if technical_data.get('rsi', {}).get('value', 50) < 30:
+            signals.append('oversold')
+        elif technical_data.get('rsi', {}).get('value', 50) > 70:
+            signals.append('overbought')
+
+        if technical_data.get('sma', {}).get('trend') == 'bullish':
+            signals.append('uptrend')
+        elif technical_data.get('sma', {}).get('trend') == 'bearish':
+            signals.append('downtrend')
+        
+        # Add sentiment signals
+        if sentiment_data:
+            sentiment = sentiment_data.get('sentiment', 'neutral')
+            if sentiment == 'positive':
+                signals.append('positive_sentiment')
+            elif sentiment == 'negative':
+                signals.append('negative_sentiment')
+
+        if not signals:
+            return "NEUTRAL"
+        elif 'uptrend' in signals and 'positive_sentiment' in signals and 'oversold' not in signals:
+            return "STRONGLY BULLISH"
+        elif 'uptrend' in signals or 'positive_sentiment' in signals:
+            return "BULLISH"
+        elif 'downtrend' in signals or 'negative_sentiment' in signals or 'overbought' in signals:
+            return "BEARISH"
+        else:
+            return "MIXED"
+
+    def _generate_action_items(
+        self,
+        symbol: str,
+        signals: Dict[str, Any],
+        sentiment_data: Optional[Dict[str, Any]] = None
+    ) -> List[str]:
+        """Generate specific action items for the trader (now includes sentiment insights)."""
+        actions = []
+
+        if signals.get('recommendation') in ['BUY', 'STRONG BUY']:
+            actions.append(f"✅ Consider buying {symbol}")
+            actions.append(f"📊 Suggested position size: {signals.get('suggested_position', {}).get('percentage', 0.01):.1%}")
+            actions.append(f"🎯 Use strategies: {', '.join(signals.get('strategies', []))}")
+            actions.append("⚠️ Set stop-loss at -5%")
+            
+            # Add sentiment-specific actions
+            if sentiment_data and sentiment_data.get('sentiment') == 'positive':
+                actions.append(f"📱 Social sentiment is positive ({sentiment_data.get('positive_pct', 0):.1f}% positive)")
+            elif sentiment_data and sentiment_data.get('sentiment') == 'negative':
+                actions.append(f"⚠️ Social sentiment is negative - consider waiting for better sentiment")
+                
+        elif signals.get('recommendation') in ['SELL', 'STRONG SELL']:
+            actions.append(f"❌ Consider selling {symbol}")
+            actions.append("📉 Look for short opportunities")
+            actions.append("🛡️ Reduce exposure to this asset")
+            
+            # Add sentiment-specific actions
+            if sentiment_data and sentiment_data.get('sentiment') == 'negative':
+                actions.append(f"📱 Social sentiment confirms negative outlook ({sentiment_data.get('negative_pct', 0):.1f}% negative)")
+        else:
+            actions.append(f"⏸️ Hold position in {symbol}")
+            actions.append("👀 Monitor for better entry points")
+            actions.append("📈 Wait for clearer signals")
+            
+            # Add sentiment-specific actions
+            if sentiment_data:
+                actions.append(f"📱 Current sentiment: {sentiment_data.get('sentiment', 'neutral')} ({sentiment_data.get('tweet_count', 0)} tweets analyzed)")
+
+        return actions
 
     def _calculate_fundamental_score(self, data: Dict[str, Any]) -> float:
         """Calculate fundamental analysis score (0-100)."""
@@ -320,29 +561,6 @@ class HybridAnalyzer:
         else:
             return "Mixed signals - exercise caution"
 
-    def _assess_market_sentiment(self, technical_data: Dict[str, Any]) -> str:
-        """Assess overall market sentiment."""
-        signals = []
-
-        if technical_data.get('rsi', {}).get('value', 50) < 30:
-            signals.append('oversold')
-        elif technical_data.get('rsi', {}).get('value', 50) > 70:
-            signals.append('overbought')
-
-        if technical_data.get('sma', {}).get('trend') == 'bullish':
-            signals.append('uptrend')
-        elif technical_data.get('sma', {}).get('trend') == 'bearish':
-            signals.append('downtrend')
-
-        if not signals:
-            return "NEUTRAL"
-        elif 'uptrend' in signals and 'oversold' not in signals:
-            return "BULLISH"
-        elif 'downtrend' in signals or 'overbought' in signals:
-            return "BEARISH"
-        else:
-            return "MIXED"
-
     def _assess_risk_level(
         self,
         fundamental_data: Dict[str, Any],
@@ -391,14 +609,14 @@ class HybridAnalyzer:
 
 
 # Convenience function for quick analysis
-def analyze(symbol: str) -> Dict[str, Any]:
-    """Quick hybrid analysis of a symbol.
+async def analyze(symbol: str) -> Dict[str, Any]:
+    """Quick hybrid analysis of a symbol (now async for sentiment support).
 
     Args:
         symbol: Stock or crypto symbol to analyze
 
     Returns:
-        Comprehensive hybrid analysis
+        Comprehensive hybrid analysis with sentiment
     """
     analyzer = HybridAnalyzer()
-    return analyzer.analyze_stock(symbol)
+    return await analyzer.analyze_stock(symbol)

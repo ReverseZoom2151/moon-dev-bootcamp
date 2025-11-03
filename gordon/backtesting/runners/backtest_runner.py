@@ -7,12 +7,21 @@ Unified runner for executing backtesting strategies across different frameworks.
 import logging
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from datetime import datetime
 
-# Backtesting frameworks
-import backtrader as bt
-import backtrader.analyzers as btanalyzers
+logger = logging.getLogger(__name__)
+
+# Backtesting frameworks - make backtrader optional
+try:
+    import backtrader as bt
+    import backtrader.analyzers as btanalyzers
+    BACKTRADER_AVAILABLE = True
+except ImportError:
+    BACKTRADER_AVAILABLE = False
+    bt = None  # type: ignore
+    btanalyzers = None  # type: ignore
+    logger.warning("Backtrader not available. Some backtesting features will be disabled.")
 
 # Import the external backtesting package, not the local module
 import sys
@@ -30,17 +39,35 @@ except ImportError:
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-# Import strategies
-from ..strategies.backtrader import SmaCrossStrategy
+# Import strategies - make backtrader strategy optional
+SmaCrossStrategy = None
+if BACKTRADER_AVAILABLE:
+    try:
+        from ..strategies.backtrader import SmaCrossStrategy
+    except ImportError:
+        logger.warning("Could not import SmaCrossStrategy. Backtrader strategies will be disabled.")
+        SmaCrossStrategy = None
 from ..strategies.backtesting_lib import (
     StochRSIBollingerStrategy,
     EnhancedEMAStrategy,
     MultiTimeframeBreakoutStrategy,
-    MeanReversionStrategy
+    MeanReversionStrategy,
+    LiquidationSLiqStrategy,
+    LiquidationLLiqStrategy,
+    LiquidationShortSLiqStrategy,
+    DelayedLiquidationShortStrategy,
+    KalmanBreakoutReversalStrategy
 )
+from ..utils.liquidation_data_prep import (
+    prepare_liquidation_data_for_sliq_strategy,
+    prepare_liquidation_data_for_lliq_strategy,
+    prepare_liquidation_data_for_short_strategy
+)
+from ..utils.alpha_decay_test import run_alpha_decay_test, print_alpha_decay_report
+from ..utils.data_filters import DataFilter
+from ..utils.backtest_template import BacktestTemplate
+from ..evolution import GPEvolutionRunner, GPConfig
 from ..data.fetcher import DataFetcher
-
-logger = logging.getLogger(__name__)
 
 
 class BacktestRunner:
@@ -49,18 +76,53 @@ class BacktestRunner:
     Handles execution across both Backtrader and backtesting.py frameworks.
     """
 
-    def __init__(self, initial_cash: float = 10000, commission: float = 0.001):
+    def __init__(self, initial_cash: float = 10000, commission: float = 0.001, config: Optional[Dict] = None):
         """
         Initialize backtest runner.
 
         Args:
             initial_cash: Starting capital
             commission: Trading commission (0.1% default)
+            config: Optional configuration dictionary
         """
+        self.config = config or {}
         self.initial_cash = initial_cash
         self.commission = commission
         self.results = {}
         self.data_fetcher = DataFetcher()
+        
+        # Initialize GP runner if config available
+        if 'backtesting' in self.config and 'gp_evolution' in self.config['backtesting']:
+            if self.config['backtesting']['gp_evolution'].get('enabled', False):
+                try:
+                    from gordon.backtesting.evolution import GPEvolutionRunner, GPConfig
+                    gp_config = GPConfig(**self.config['backtesting']['gp_evolution'])
+                    self.gp_runner = GPEvolutionRunner(gp_config)
+                except Exception as e:
+                    logger.warning(f"Could not initialize GP runner: {e}")
+                    self.gp_runner = None
+            else:
+                self.gp_runner = None
+        else:
+            self.gp_runner = None
+        
+        # Initialize ML indicator manager if config available
+        if 'ml' in self.config and self.config['ml'].get('indicator_evaluation', {}).get('enabled', False):
+            try:
+                from gordon.ml import MLIndicatorManager
+                self.ml_manager = MLIndicatorManager(self.config)
+            except Exception as e:
+                logger.warning(f"Could not initialize ML indicator manager: {e}")
+                self.ml_manager = None
+        else:
+            self.ml_manager = None
+        
+        # Initialize historical data manager if config available
+        if self.config.get('data_collection', {}).get('historical_data'):
+            from ..data.historical_data_manager import HistoricalDataManager
+            self.historical_data_manager = HistoricalDataManager(self.config)
+        else:
+            self.historical_data_manager = None
 
     def run_sma_crossover_backtest(
         self,
@@ -83,6 +145,10 @@ class BacktestRunner:
         Returns:
             Dict with backtest results and statistics
         """
+        if not BACKTRADER_AVAILABLE or SmaCrossStrategy is None:
+            logger.error("Backtrader not available. Install with: pip install backtrader")
+            return {'error': 'Backtrader not available'}
+
         logger.info("=== Running SMA Crossover Backtest (Day 13) ===")
 
         try:
@@ -434,6 +500,547 @@ class BacktestRunner:
         except Exception as e:
             logger.error(f"Error in Mean Reversion backtest: {e}")
             return {}
+
+    def run_liquidation_sliq_backtest(
+        self,
+        data_path: str,
+        symbol: Optional[str] = None,
+        optimize: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Run Day 21 Liquidation S LIQ backtest.
+        
+        Args:
+            data_path: Path to liquidation CSV file
+            symbol: Optional symbol filter
+            optimize: Whether to run parameter optimization
+            
+        Returns:
+            Dict with backtest results
+        """
+        logger.info("=== Running Liquidation S LIQ Backtest (Day 21) ===")
+        
+        try:
+            # Prepare liquidation data
+            data_df = prepare_liquidation_data_for_sliq_strategy(data_path, symbol)
+            
+            if data_df.empty:
+                logger.error("Could not prepare liquidation data")
+                return {}
+            
+            # Initialize backtester
+            backtester = Backtest(
+                data_df,
+                LiquidationSLiqStrategy,
+                cash=self.initial_cash,
+                commission=self.commission
+            )
+            
+            if optimize:
+                logger.info("Running parameter optimization...")
+                stats = backtester.optimize(
+                    s_liq_entry_thresh=range(10000, 500000, 10000),
+                    entry_time_window_mins=range(5, 60, 5),
+                    take_profit=[i / 1000 for i in range(5, 31, 5)],
+                    stop_loss=[i / 1000 for i in range(5, 31, 5)],
+                    maximize='Equity Final [$]'
+                )
+            else:
+                stats = backtester.run()
+            
+            # Convert stats to dict
+            stats_dict = {
+                'initial_value': self.initial_cash,
+                'final_value': stats['Equity Final [$]'],
+                'total_return': stats['Return [%]'],
+                'sharpe_ratio': stats['Sharpe Ratio'],
+                'max_drawdown': stats['Max. Drawdown [%]'],
+                'num_trades': stats['# Trades'],
+                'win_rate': stats['Win Rate [%]'] if '# Trades' in stats and stats['# Trades'] > 0 else 0
+            }
+            
+            # Print results
+            self._print_results("Liquidation S LIQ", stats_dict)
+            
+            self.results['liquidation_sliq'] = stats_dict
+            return stats_dict
+            
+        except Exception as e:
+            logger.error(f"Error in Liquidation S LIQ backtest: {e}")
+            return {}
+
+    def run_liquidation_lliq_backtest(
+        self,
+        data_path: str,
+        symbol: Optional[str] = None,
+        optimize: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Run Day 21 Liquidation L LIQ backtest.
+        
+        Args:
+            data_path: Path to liquidation CSV file
+            symbol: Optional symbol filter
+            optimize: Whether to run parameter optimization
+            
+        Returns:
+            Dict with backtest results
+        """
+        logger.info("=== Running Liquidation L LIQ Backtest (Day 21) ===")
+        
+        try:
+            # Prepare liquidation data
+            data_df = prepare_liquidation_data_for_lliq_strategy(data_path, symbol)
+            
+            if data_df.empty:
+                logger.error("Could not prepare liquidation data")
+                return {}
+            
+            # Initialize backtester
+            backtester = Backtest(
+                data_df,
+                LiquidationLLiqStrategy,
+                cash=self.initial_cash,
+                commission=self.commission
+            )
+            
+            if optimize:
+                logger.info("Running parameter optimization...")
+                stats = backtester.optimize(
+                    l_liq_entry_thresh=range(10000, 500000, 10000),
+                    entry_time_window_mins=range(1, 11, 1),
+                    s_liq_closure_thresh=range(10000, 500000, 10000),
+                    exit_time_window_mins=range(1, 11, 1),
+                    take_profit=[i / 100 for i in range(1, 5, 1)],
+                    stop_loss=[i / 100 for i in range(1, 5, 1)],
+                    maximize='Equity Final [$]'
+                )
+            else:
+                stats = backtester.run()
+            
+            # Convert stats to dict
+            stats_dict = {
+                'initial_value': self.initial_cash,
+                'final_value': stats['Equity Final [$]'],
+                'total_return': stats['Return [%]'],
+                'sharpe_ratio': stats['Sharpe Ratio'],
+                'max_drawdown': stats['Max. Drawdown [%]'],
+                'num_trades': stats['# Trades'],
+                'win_rate': stats['Win Rate [%]'] if '# Trades' in stats and stats['# Trades'] > 0 else 0
+            }
+            
+            # Print results
+            self._print_results("Liquidation L LIQ", stats_dict)
+            
+            self.results['liquidation_lliq'] = stats_dict
+            return stats_dict
+            
+        except Exception as e:
+            logger.error(f"Error in Liquidation L LIQ backtest: {e}")
+            return {}
+
+    def run_liquidation_short_sliq_backtest(
+        self,
+        data_path: str,
+        symbol: Optional[str] = None,
+        optimize: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Run Day 22 Liquidation Short S LIQ backtest.
+        
+        Args:
+            data_path: Path to liquidation CSV file
+            symbol: Optional symbol filter
+            optimize: Whether to run parameter optimization
+            
+        Returns:
+            Dict with backtest results
+        """
+        logger.info("=== Running Liquidation Short S LIQ Backtest (Day 22) ===")
+        
+        try:
+            # Prepare liquidation data
+            data_df = prepare_liquidation_data_for_short_strategy(data_path, symbol)
+            
+            if data_df.empty:
+                logger.error("Could not prepare liquidation data")
+                return {}
+            
+            # Initialize backtester
+            backtester = Backtest(
+                data_df,
+                LiquidationShortSLiqStrategy,
+                cash=self.initial_cash,
+                commission=self.commission
+            )
+            
+            if optimize:
+                logger.info("Running parameter optimization...")
+                stats = backtester.optimize(
+                    short_liquidation_thresh=range(10000, 500000, 10000),
+                    entry_time_window_mins=range(1, 11, 1),
+                    long_liquidation_closure_thresh=range(10000, 500000, 10000),
+                    exit_time_window_mins=range(1, 11, 1),
+                    take_profit_pct=[i / 100 for i in range(1, 5, 1)],
+                    stop_loss_pct=[i / 100 for i in range(1, 5, 1)],
+                    maximize='Equity Final [$]'
+                )
+            else:
+                stats = backtester.run()
+            
+            # Convert stats to dict
+            stats_dict = {
+                'initial_value': self.initial_cash,
+                'final_value': stats['Equity Final [$]'],
+                'total_return': stats['Return [%]'],
+                'sharpe_ratio': stats['Sharpe Ratio'],
+                'max_drawdown': stats['Max. Drawdown [%]'],
+                'num_trades': stats['# Trades'],
+                'win_rate': stats['Win Rate [%]'] if '# Trades' in stats and stats['# Trades'] > 0 else 0
+            }
+            
+            # Print results
+            self._print_results("Liquidation Short S LIQ", stats_dict)
+            
+            self.results['liquidation_short_sliq'] = stats_dict
+            return stats_dict
+            
+        except Exception as e:
+            logger.error(f"Error in Liquidation Short S LIQ backtest: {e}")
+            return {}
+
+    def run_alpha_decay_test(
+        self,
+        data_path: str,
+        symbol: Optional[str] = None,
+        delays: Optional[List[int]] = None
+    ) -> Dict[int, Dict[str, Any]]:
+        """
+        Run alpha decay test for short liquidation strategy.
+        
+        Tests how strategy performance degrades with entry delays.
+        
+        Args:
+            data_path: Path to liquidation CSV file
+            symbol: Optional symbol filter
+            delays: List of delay values in minutes (default: [0, 1, 2, 5, 10, 15, 30, 60])
+            
+        Returns:
+            Dictionary mapping delay to backtest results
+        """
+        logger.info("=== Running Alpha Decay Test (Day 22) ===")
+        
+        if delays is None:
+            delays = [0, 1, 2, 5, 10, 15, 30, 60]
+        
+        try:
+            # Prepare liquidation data
+            data_df = prepare_liquidation_data_for_short_strategy(data_path, symbol)
+            
+            if data_df.empty:
+                logger.error("Could not prepare liquidation data")
+                return {}
+            
+            # Run alpha decay test
+            results = run_alpha_decay_test(
+                data_df,
+                DelayedLiquidationShortStrategy,
+                delays,
+                initial_cash=self.initial_cash,
+                commission=self.commission
+            )
+            
+            # Print analysis report
+            print_alpha_decay_report(results, metric='return_pct')
+            
+            self.results['alpha_decay'] = results
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in alpha decay test: {e}")
+            return {}
+
+    def run_kalman_breakout_backtest(
+        self,
+        symbol: str = 'BTCUSDT',
+        timeframe: str = '1h',
+        optimize: bool = False,
+        filter_exclude_summer: bool = False,
+        filter_market_hours: Optional[str] = None  # 'market', 'non_market', or None
+    ) -> Dict[str, Any]:
+        """
+        Run Day 23 Kalman Filter Breakout/Reversal backtest.
+        
+        Args:
+            symbol: Trading pair
+            timeframe: Candle timeframe
+            optimize: Whether to run parameter optimization
+            filter_exclude_summer: Whether to exclude summer months (May-September)
+            filter_market_hours: Filter by market hours ('market', 'non_market', or None)
+            
+        Returns:
+            Dict with backtest results
+        """
+        logger.info("=== Running Kalman Filter Breakout/Reversal Backtest (Day 23) ===")
+        
+        try:
+            # Fetch data
+            df = self.data_fetcher.fetch_for_backtesting_lib(symbol, timeframe, limit=2000)
+            
+            if df.empty:
+                logger.error("Could not fetch data")
+                return {}
+            
+            # Apply data filters if requested
+            if filter_exclude_summer:
+                logger.info("Filtering out summer months (May-September)")
+                df = DataFilter.filter_exclude_months(df, start_month=5, end_month=9)
+            
+            if filter_market_hours:
+                logger.info(f"Filtering for {filter_market_hours} hours")
+                market_df, non_market_df = DataFilter.filter_market_hours(df)
+                if filter_market_hours == 'market':
+                    df = market_df
+                elif filter_market_hours == 'non_market':
+                    df = non_market_df
+            
+            if df.empty:
+                logger.error("No data remaining after filtering")
+                return {}
+            
+            # Initialize backtester
+            backtester = Backtest(
+                df,
+                KalmanBreakoutReversalStrategy,
+                cash=self.initial_cash,
+                commission=self.commission
+            )
+            
+            if optimize:
+                logger.info("Running parameter optimization...")
+                stats = backtester.optimize(
+                    window=range(20, 100, 10),
+                    take_profit=[i / 100 for i in range(1, 11, 1)],
+                    stop_loss=[i / 100 for i in range(1, 11, 1)],
+                    maximize='Equity Final [$]',
+                    method='skopt',
+                    n_iter=50
+                )
+            else:
+                stats = backtester.run()
+            
+            # Convert stats to dict
+            stats_dict = {
+                'initial_value': self.initial_cash,
+                'final_value': stats['Equity Final [$]'],
+                'total_return': stats['Return [%]'],
+                'sharpe_ratio': stats['Sharpe Ratio'],
+                'max_drawdown': stats['Max. Drawdown [%]'],
+                'num_trades': stats['# Trades'],
+                'win_rate': stats['Win Rate [%]'] if '# Trades' in stats and stats['# Trades'] > 0 else 0
+            }
+            
+            # Print results
+            self._print_results("Kalman Breakout/Reversal", stats_dict)
+            
+            self.results['kalman_breakout'] = stats_dict
+            return stats_dict
+            
+        except Exception as e:
+            logger.error(f"Error in Kalman Breakout backtest: {e}")
+            return {}
+
+    def run_ml_indicator_evaluation(
+        self,
+        symbol: str = 'BTCUSDT',
+        timeframe: str = '1h',
+        pandas_ta_indicators: List[Dict] = None,
+        talib_indicators: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Run ML indicator evaluation for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            pandas_ta_indicators: List of pandas_ta indicator configs
+            talib_indicators: List of talib indicator names
+            
+        Returns:
+            Evaluation results
+        """
+        if not self.ml_manager:
+            logger.error("ML indicator manager not initialized")
+            return {'error': 'ML manager not available'}
+        
+        try:
+            # Fetch data
+            data_df = self.data_fetcher.fetch_for_backtesting_lib(symbol, timeframe, limit=2000)
+            
+            if data_df.empty:
+                logger.error(f"Could not fetch data for {symbol}")
+                return {'error': 'Data fetch failed'}
+            
+            # Run evaluation
+            result = self.ml_manager.evaluate_indicator_set(
+                data_df,
+                pandas_ta_indicators=pandas_ta_indicators,
+                talib_indicators=talib_indicators
+            )
+            
+            logger.info("ML indicator evaluation completed")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in ML indicator evaluation: {e}")
+            return {'error': str(e)}
+    
+    def run_ml_indicator_looping(
+        self,
+        symbol: str = 'BTCUSDT',
+        timeframe: str = '1h',
+        generations: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Run ML indicator looping for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            timeframe: Timeframe
+            generations: Number of generations to run
+            
+        Returns:
+            Looping results
+        """
+        if not self.ml_manager:
+            logger.error("ML indicator manager not initialized")
+            return {'error': 'ML manager not available'}
+        
+        try:
+            # Update generations in config
+            if 'ml' not in self.config:
+                self.config['ml'] = {}
+            if 'indicator_looping' not in self.config['ml']:
+                self.config['ml']['indicator_looping'] = {}
+            self.config['ml']['indicator_looping']['generations'] = generations
+            
+            # Reinitialize manager with updated config
+            from gordon.ml import MLIndicatorManager
+            ml_manager = MLIndicatorManager(self.config)
+            
+            # Fetch data
+            data_df = self.data_fetcher.fetch_for_backtesting_lib(symbol, timeframe, limit=2000)
+            
+            if data_df.empty:
+                logger.error(f"Could not fetch data for {symbol}")
+                return {'error': 'Data fetch failed'}
+            
+            # Run looping
+            results = ml_manager.run_indicator_looping(data_df)
+            
+            logger.info(f"ML indicator looping completed: {len(results)} generations")
+            return {
+                'generations': len(results),
+                'results': results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in ML indicator looping: {e}")
+            return {'error': str(e)}
+    
+    def run_ml_top_indicators(
+        self,
+        top_n: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get top indicators from ML evaluation.
+        
+        Args:
+            top_n: Number of top indicators to return
+            
+        Returns:
+            Dictionary with rankings
+        """
+        if not self.ml_manager:
+            logger.error("ML indicator manager not initialized")
+            return {'error': 'ML manager not available'}
+        
+        try:
+            rankings = self.ml_manager.get_top_indicators(top_n=top_n)
+            return rankings
+        except Exception as e:
+            logger.error(f"Error getting top indicators: {e}")
+            return {'error': str(e)}
+    
+    def evolve_strategy_gp(
+        self,
+        symbol: str = 'BTCUSDT',
+        timeframe: str = '1h',
+        data_path: Optional[str] = None,
+        generations: int = 30,
+        population_size: int = 200,
+        use_multiprocessing: bool = True,
+        save_results: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Evolve trading strategy using Genetic Programming (Day 29).
+        
+        Args:
+            symbol: Trading pair
+            timeframe: Candle timeframe
+            data_path: Optional path to CSV file
+            generations: Number of generations to evolve
+            population_size: Size of population
+            use_multiprocessing: Whether to use multiprocessing
+            save_results: Whether to save results
+            
+        Returns:
+            Dictionary with evolution results
+        """
+        logger.info("=== Starting GP Strategy Evolution (Day 29) ===")
+        
+        try:
+            # Create GP configuration
+            gp_config = GPConfig(
+                initial_cash=self.initial_cash,
+                commission_pct=self.commission,
+                population_size=population_size,
+                generations=generations
+            )
+            
+            # Run evolution
+            results = self.gp_runner.evolve_strategy(
+                symbol=symbol,
+                timeframe=timeframe,
+                data_path=data_path,
+                gp_config=gp_config,
+                use_multiprocessing=use_multiprocessing,
+                save_results=save_results
+            )
+            
+            if 'error' in results:
+                logger.error(f"GP evolution failed: {results['error']}")
+                return results
+            
+            # Log results
+            logger.info(f"Evolution completed for {symbol}")
+            logger.info(f"Found {results.get('hall_of_fame_size', 0)} best strategies")
+            
+            if results.get('best_strategies'):
+                logger.info("Top strategies:")
+                for strategy in results['best_strategies'][:3]:
+                    logger.info(
+                        f"  Rank {strategy['rank']}: "
+                        f"Fitness={strategy['fitness']:.2f}, "
+                        f"Size={strategy['size']}"
+                    )
+            
+            self.results['gp_evolution'] = results
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in GP evolution: {e}", exc_info=True)
+            return {'error': str(e)}
 
     def _generate_param_combinations(self, opt_params):
         """Generate parameter combinations for optimization."""

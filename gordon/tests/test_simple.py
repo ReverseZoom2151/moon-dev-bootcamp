@@ -23,7 +23,7 @@ except ImportError as e:
     print(f"❌ Failed to import Agent: {e}")
 
 try:
-    from utils.intro import print_intro
+    from gordon.utilities.ui import print_intro
     print("✅ Utils imported")
 except ImportError as e:
     print(f"❌ Failed to import utils: {e}")
@@ -69,5 +69,5 @@ except Exception as e:
 print("\n" + "=" * 50)
 print("Test complete!")
 print("\nTo run Gordon, use:")
-print("  python run_gordon.py")
+print("  python -m gordon.entrypoints.cli")
 print("\nMake sure you have set OPENAI_API_KEY in .env file")

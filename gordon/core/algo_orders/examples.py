@@ -5,7 +5,7 @@ This file demonstrates how to use the refactored algorithmic order modules.
 """
 
 import asyncio
-from exchange_orchestrator.core.algo_orders import (
+from gordon.core.algo_orders import (
     AlgoType,
     ManualLoopOrder,
     ScheduledOrder,
@@ -25,7 +25,7 @@ async def example_manual_loop(orchestrator, event_bus):
     print("=== Manual Loop Example ===")
 
     order = ManualLoopOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -60,7 +60,7 @@ async def example_scheduled(orchestrator, event_bus):
     print("=== Scheduled Order Example ===")
 
     order = ScheduledOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -86,7 +86,7 @@ async def example_twap(orchestrator, event_bus):
     print("=== TWAP Example ===")
 
     order = TWAPOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -109,7 +109,7 @@ async def example_vwap(orchestrator, event_bus):
     print("=== VWAP Example ===")
 
     order = VWAPOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -132,7 +132,7 @@ async def example_iceberg(orchestrator, event_bus):
     print("=== Iceberg Order Example ===")
 
     order = IcebergOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -155,7 +155,7 @@ async def example_grid(orchestrator, event_bus):
     print("=== Grid Trading Example ===")
 
     order = GridOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -185,7 +185,7 @@ async def example_dca(orchestrator, event_bus):
     print("=== DCA Example ===")
 
     order = DCAOrder(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         exchange="binance",
         symbol="BTC/USDT",
@@ -206,10 +206,10 @@ async def example_algorithmic_trader(orchestrator, event_bus):
     """
     print("=== AlgorithmicTrader Facade Example ===")
 
-    from exchange_orchestrator.core.algo_orders import AlgorithmicTrader
+    from gordon.core.algo_orders import AlgorithmicTrader
 
     trader = AlgorithmicTrader(
-        exchange_orchestrator=orchestrator,
+        orchestrator=orchestrator,
         event_bus=event_bus,
         config={
             'dry_run': True,

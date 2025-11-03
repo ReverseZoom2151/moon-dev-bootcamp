@@ -14,7 +14,7 @@ Modules:
   - utils: Utility functions and helpers
 
 Examples:
-  from exchange_orchestrator.backtesting import BacktestRunner
+  from gordon.backtesting import BacktestRunner
   runner = BacktestRunner()
   results = runner.run_all_strategies()
 """

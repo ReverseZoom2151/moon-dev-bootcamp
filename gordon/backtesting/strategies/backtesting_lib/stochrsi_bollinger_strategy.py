@@ -9,8 +9,15 @@ Position Sizing: Fixed percentage of equity
 """
 
 import pandas as pd
-from backtesting import Strategy
-from backtesting.lib import crossover
+# Import external backtesting package, avoiding conflict with gordon.backtesting
+from ...utils.backtesting_import import get_backtesting_strategy, get_backtesting_crossover
+
+Strategy = get_backtesting_strategy()
+crossover = get_backtesting_crossover()
+
+if Strategy is None:
+    raise ImportError("External 'backtesting' package not installed. Install with: pip install backtesting")
+
 from ta.momentum import StochRSIIndicator
 from ta.volatility import BollingerBands
 

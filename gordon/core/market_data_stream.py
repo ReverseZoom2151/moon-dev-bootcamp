@@ -16,7 +16,7 @@ The new modular structure provides:
 - streams/aggregator.py: Stream aggregation and combination
 
 For new code, import directly from streams package:
-    from exchange_orchestrator.core.streams import (
+    from gordon.core.streams import (
         LiquidationStream, TradeStream, StreamAggregator
     )
 

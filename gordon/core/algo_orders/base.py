@@ -31,21 +31,21 @@ class BaseAlgoOrder:
     and lifecycle management.
     """
 
-    def __init__(self, exchange_orchestrator: Any, event_bus: Any,
+    def __init__(self, orchestrator: Any, event_bus: Any,
                  exchange: str, symbol: str, size: float,
                  params: Optional[Dict] = None):
         """
         Initialize base algorithmic order.
 
         Args:
-            exchange_orchestrator: Main orchestrator instance
+            orchestrator: Main orchestrator instance (ExchangeOrchestrator)
             event_bus: Event bus for communication
             exchange: Exchange to trade on
             symbol: Trading symbol
             size: Position size
             params: Algorithm-specific parameters
         """
-        self.orchestrator = exchange_orchestrator
+        self.orchestrator = orchestrator
         self.event_bus = event_bus
         self.exchange = exchange
         self.symbol = symbol

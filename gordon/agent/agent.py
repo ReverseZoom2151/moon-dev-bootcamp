@@ -13,8 +13,7 @@ from .prompts import (
 )
 from .schemas import Answer, IsDone, OptimizedToolArgs, Task, TaskList
 from gordon.tools import TOOLS
-from gordon.utils.logger import Logger
-from gordon.utils.ui import show_progress
+from gordon.utilities.ui import Logger, show_progress
 
 
 class Agent:

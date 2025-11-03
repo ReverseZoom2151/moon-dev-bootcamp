@@ -17,7 +17,7 @@ Stream Types:
 - TradeAggregator: Aggregates trades in time windows
 
 Usage:
-    from exchange_orchestrator.core.streams import (
+    from gordon.core.streams import (
         LiquidationStream,
         TradeStream,
         FundingStream,

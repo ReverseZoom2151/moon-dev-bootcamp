@@ -21,6 +21,19 @@ from .day11_supply_demand_strategy import SupplyDemandStrategy
 from .day12_engulfing_strategy import EngulfingStrategy
 from .day12_vwap_probability_strategy import VWAPProbabilityStrategy
 
+# Day 26 Strategy Imports
+from .day26_eth_sma_strategy import EthSMAStrategy
+from .day26_market_maker_strategy import MarketMakerStrategy
+
+# Day 36 Social Signal Trading
+from .social_signal_trader import SocialSignalTrader, SocialSignalDetector, SocialSignalExecutor
+
+# Day 37 RRS Strategy
+from .rrs_strategy import RRSStrategy
+
+# Day 45 Enhanced Strategies
+from .liquidation_hunter_strategy import LiquidationHunterStrategy
+
 # Import all strategy classes for easy access
 __all__ = [
     'BaseStrategy',
@@ -35,4 +48,17 @@ __all__ = [
     'SupplyDemandStrategy',
     'EngulfingStrategy',
     'VWAPProbabilityStrategy',
+    # Day 20 Strategies
+    'MeanReversionStrategy',
+    # Day 26 Strategies
+    'EthSMAStrategy',
+    'MarketMakerStrategy',
+    # Day 36 Social Signal Trading
+    'SocialSignalTrader',
+    'SocialSignalDetector',
+    'SocialSignalExecutor',
+    # Day 37 RRS Strategy
+    'RRSStrategy',
+    # Day 45 Enhanced Strategies
+    'LiquidationHunterStrategy',
 ]

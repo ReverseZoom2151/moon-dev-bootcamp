@@ -12,8 +12,14 @@ Features:
 """
 
 import numpy as np
-from backtesting import Strategy
-from backtesting.test import SMA
+# Import external backtesting package, avoiding conflict with gordon.backtesting
+from ...utils.backtesting_import import get_backtesting_strategy, get_backtesting_sma
+
+Strategy = get_backtesting_strategy()
+SMA = get_backtesting_sma()
+
+if Strategy is None or SMA is None:
+    raise ImportError("External 'backtesting' package not installed. Install with: pip install backtesting")
 
 
 def BBANDS_CUSTOM(data, period=20, std_dev=2):

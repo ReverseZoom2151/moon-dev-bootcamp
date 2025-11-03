@@ -19,43 +19,43 @@ def test_imports():
 
     # Test individual module imports
     try:
-        from exchange_orchestrator.utilities import data_utils
+        from gordon.utilities import data_utils
         print("[OK] data_utils imported successfully")
     except Exception as e:
         print(f"[FAIL] Failed to import data_utils: {e}")
 
     try:
-        from exchange_orchestrator.utilities import math_utils
+        from gordon.utilities import math_utils
         print("[OK] math_utils imported successfully")
     except Exception as e:
         print(f"[FAIL] Failed to import math_utils: {e}")
 
     try:
-        from exchange_orchestrator.utilities import time_utils
+        from gordon.utilities import time_utils
         print("[OK] time_utils imported successfully")
     except Exception as e:
         print(f"[FAIL] Failed to import time_utils: {e}")
 
     try:
-        from exchange_orchestrator.utilities import exchange_utils
+        from gordon.utilities import exchange_utils
         print("[OK] exchange_utils imported successfully")
     except Exception as e:
         print(f"[FAIL] Failed to import exchange_utils: {e}")
 
     try:
-        from exchange_orchestrator.utilities import signal_utils
+        from gordon.utilities import signal_utils
         print("[OK] signal_utils imported successfully")
     except Exception as e:
         print(f"[FAIL] Failed to import signal_utils: {e}")
 
     try:
-        from exchange_orchestrator.utilities import format_utils
+        from gordon.utilities import format_utils
         print("[OK] format_utils imported successfully")
     except Exception as e:
         print(f"[FAIL] Failed to import format_utils: {e}")
 
     try:
-        from exchange_orchestrator.utilities import master_utils
+        from gordon.utilities import master_utils
         print("[OK] master_utils imported successfully (backward compatibility)")
     except Exception as e:
         print(f"[FAIL] Failed to import master_utils: {e}")
@@ -67,7 +67,7 @@ def test_imports():
     print("=" * 60)
 
     try:
-        from exchange_orchestrator.utilities import (
+        from gordon.utilities import (
             DataUtils,
             MathUtils,
             TimeUtils,
@@ -87,7 +87,7 @@ def test_imports():
     print("=" * 60)
 
     try:
-        from exchange_orchestrator.utilities import master_utils
+        from gordon.utilities import master_utils
 
         # Test a few key functions from each module
         functions_to_check = [
@@ -125,7 +125,7 @@ def test_basic_functionality():
     try:
         import pandas as pd
         import numpy as np
-        from exchange_orchestrator.utilities import (
+        from gordon.utilities import (
             math_utils,
             signal_utils,
             exchange_utils,

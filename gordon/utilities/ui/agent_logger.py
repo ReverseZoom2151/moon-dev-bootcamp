@@ -1,4 +1,10 @@
-from utils.ui import UI
+"""
+Agent Logger Module
+===================
+Agent-specific logger that uses the UI system for interactive display.
+"""
+
+from .ui import UI
 
 
 class Logger:
@@ -41,3 +47,4 @@ class Logger:
     def progress(self, message: str, success_message: str = ""):
         """Return a progress context manager for showing loading states."""
         return self.ui.progress(message, success_message)
+

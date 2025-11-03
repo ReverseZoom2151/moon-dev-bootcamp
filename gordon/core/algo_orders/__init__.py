@@ -17,7 +17,7 @@ Available Order Types:
     - DCAOrder: Dollar Cost Averaging
 
 Usage:
-    from exchange_orchestrator.core.algo_orders import ManualLoopOrder, AlgoType
+    from gordon.core.algo_orders import ManualLoopOrder, AlgoType
 
     order = ManualLoopOrder(orchestrator, event_bus, "binance", "BTC/USDT", 0.001)
     await order.start()

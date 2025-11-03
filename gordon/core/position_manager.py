@@ -143,6 +143,42 @@ class PositionManager:
             return position
         return None
 
+    async def get_all_positions(self, exchange: Optional[str] = None) -> List[Dict]:
+        """
+        Get all positions for an exchange or all exchanges.
+        
+        Args:
+            exchange: Exchange name (None for all exchanges)
+            
+        Returns:
+            List of position dictionaries with symbol, size, entry_price, etc.
+        """
+        positions = []
+        
+        exchanges = [exchange] if exchange else self.positions.keys()
+        
+        for exch in exchanges:
+            if exch not in self.positions:
+                continue
+                
+            for symbol, position in self.positions[exch].items():
+                # Get position info
+                pos_info = await self.get_position_info(exch, symbol)
+                
+                if pos_info.get('in_position'):
+                    positions.append({
+                        'exchange': exch,
+                        'symbol': symbol,
+                        'size': pos_info.get('size', 0),
+                        'entry_price': pos_info.get('entry_price', 0),
+                        'current_price': pos_info.get('current_price', 0),
+                        'usd_value': pos_info.get('usd_value', 0),
+                        'pnl_percent': pos_info.get('pnl_percent', 0),
+                        'is_long': pos_info.get('is_long', True)
+                    })
+        
+        return positions
+
     async def get_positions(self, exchange: Optional[str] = None) -> List[Dict]:
         """Get positions for an exchange or all exchanges."""
         positions = []

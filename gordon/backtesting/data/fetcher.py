@@ -4,8 +4,9 @@ import pandas as pd
 import numpy as np
 import logging
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, Optional
 from .provider import DataProvider
+from .provider_factory import DataProviderFactory
 
 logger = logging.getLogger(__name__)
 
@@ -124,14 +125,22 @@ class MockDataProvider(DataProvider):
 class DataFetcher:
     """Unified data fetcher for all backtesting frameworks"""
     
-    def __init__(self, provider: DataProvider = None):
+    def __init__(self, provider: Optional[DataProvider] = None, provider_type: Optional[str] = None, config: Optional[Dict] = None):
         """
         Initialize data fetcher
         
         Args:
-            provider: Data provider instance (defaults to MockDataProvider)
+            provider: Data provider instance (optional)
+            provider_type: Type of provider to create ('binance', 'bitfinex', 'yahoo', 'mock')
+            config: Configuration dictionary for provider
         """
-        self.provider = provider or MockDataProvider()
+        if provider:
+            self.provider = provider
+        elif provider_type:
+            self.provider = DataProviderFactory.create_provider(provider_type, config or {})
+        else:
+            self.provider = MockDataProvider()
+        
         logger.info(f"DataFetcher initialized with {self.provider.__class__.__name__}")
     
     def fetch(self, symbol: str = 'BTCUSDT', timeframe: str = '1h',

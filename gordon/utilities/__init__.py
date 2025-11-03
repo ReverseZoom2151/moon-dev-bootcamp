@@ -11,11 +11,13 @@ Available Modules:
 - signal_utils: Trading signal and pattern detection
 - format_utils: Formatting and display utilities
 - master_utils: Consolidated utilities (backward compatible)
+- ui: User interface utilities for agent display
 
 Quick Import Examples:
-    from exchange_orchestrator.utilities import master_utils
-    from exchange_orchestrator.utilities import data_utils, math_utils
-    from exchange_orchestrator.utilities.signal_utils import signal_utils
+    from gordon.utilities import master_utils
+    from gordon.utilities import data_utils, math_utils
+    from gordon.utilities.signal_utils import signal_utils
+    from gordon.utilities.ui import Logger, show_progress
 """
 
 # Import all utility modules for easy access
@@ -26,6 +28,13 @@ from .exchange_utils import exchange_utils, ExchangeUtils
 from .signal_utils import signal_utils, SignalUtils
 from .format_utils import format_utils, FormatUtils
 from .master_utils import master_utils, MasterUtils
+
+# UI utilities (optional import)
+try:
+    from .ui import Logger, show_progress, UI, print_intro
+    _ui_available = True
+except ImportError:
+    _ui_available = False
 
 __all__ = [
     # Singleton instances
@@ -45,5 +54,9 @@ __all__ = [
     'SignalUtils',
     'FormatUtils',
 ]
+
+# Add UI utilities if available
+if _ui_available:
+    __all__.extend(['Logger', 'show_progress', 'UI', 'print_intro'])
 
 __version__ = '1.0.0'

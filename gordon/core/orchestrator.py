@@ -368,7 +368,7 @@ class ExchangeOrchestrator:
     def _save_metrics(self):
         """Save metrics to file."""
         try:
-            metrics_file = Path("exchange_orchestrator/logs/metrics.json")
+            metrics_file = Path("gordon/logs/metrics.json")
             metrics_file.parent.mkdir(parents=True, exist_ok=True)
 
             with open(metrics_file, "w") as f:

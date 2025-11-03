@@ -12,6 +12,7 @@ from pathlib import Path
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from gordon.core.strategy_manager import StrategyManager
+from gordon.core.event_bus import EventBus
 
 
 @tool
@@ -37,7 +38,8 @@ def run_sma_strategy(
         Strategy execution results including signals and trades
     """
     try:
-        manager = StrategyManager()
+        event_bus = EventBus()
+        manager = StrategyManager(event_bus, config={})
 
         # Configure strategy
         config = {
@@ -92,7 +94,8 @@ def run_rsi_strategy(
         Strategy execution results
     """
     try:
-        manager = StrategyManager()
+        event_bus = EventBus()
+        manager = StrategyManager(event_bus, config={})
 
         config = {
             'symbol': symbol,
@@ -145,7 +148,8 @@ def run_vwap_strategy(
         Strategy execution results
     """
     try:
-        manager = StrategyManager()
+        event_bus = EventBus()
+        manager = StrategyManager(event_bus, config={})
 
         config = {
             'symbol': symbol,
@@ -198,7 +202,8 @@ def run_mean_reversion_strategy(
         Strategy execution results
     """
     try:
-        manager = StrategyManager()
+        event_bus = EventBus()
+        manager = StrategyManager(event_bus, config={})
 
         config = {
             'symbol': symbol,
@@ -250,7 +255,8 @@ def run_bollinger_strategy(
         Strategy execution results
     """
     try:
-        manager = StrategyManager()
+        event_bus = EventBus()
+        manager = StrategyManager(event_bus, config={})
 
         config = {
             'symbol': symbol,

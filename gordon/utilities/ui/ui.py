@@ -62,7 +62,6 @@ class Spinner:
     
     def update_message(self, message: str):
         """Update the spinner message."""
-        self.message = message
 
 
 def show_progress(message: str, success_message: str = ""):

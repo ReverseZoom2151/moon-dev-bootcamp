@@ -77,7 +77,7 @@ class StrategyManager:
         for module_name in strategy_modules:
             try:
                 # Import the strategy module
-                module = importlib.import_module(f'.strategies.{module_name}', package='exchange_orchestrator.core')
+                module = importlib.import_module(f'.strategies.{module_name}', package='gordon.core')
 
                 # Find the strategy class (looks for class inheriting from BaseStrategy)
                 for name, obj in inspect.getmembers(module, inspect.isclass):

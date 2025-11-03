@@ -53,16 +53,16 @@ class AlgorithmicTrader:
     through the orchestrator interface.
     """
 
-    def __init__(self, exchange_orchestrator: Any, event_bus: Any, config: Optional[Dict] = None):
+    def __init__(self, orchestrator: Any, event_bus: Any, config: Optional[Dict] = None):
         """
         Initialize algorithmic trader.
 
         Args:
-            exchange_orchestrator: Main orchestrator instance
+            orchestrator: Main orchestrator instance (ExchangeOrchestrator)
             event_bus: Event bus for communication
             config: Configuration dictionary
         """
-        self.orchestrator = exchange_orchestrator
+        self.orchestrator = orchestrator
         self.event_bus = event_bus
         self.logger = logging.getLogger(__name__)
         self.config = config or {}

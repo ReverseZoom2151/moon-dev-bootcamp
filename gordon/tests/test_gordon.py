@@ -14,14 +14,14 @@ sys.path.append(str(Path(__file__).parent))
 print("Testing Gordon imports...")
 
 try:
-    from gordon_agent import GordonAgent
+    from agent.gordon_agent import GordonAgent
     print("✅ GordonAgent imported successfully")
 except ImportError as e:
     print(f"❌ Failed to import GordonAgent: {e}")
     sys.exit(1)
 
 try:
-    from utils.intro import print_intro
+    from gordon.utilities.ui import print_intro
     print("✅ Intro utilities imported successfully")
 except ImportError as e:
     print(f"❌ Failed to import utilities: {e}")
@@ -35,7 +35,7 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from backtesting.comprehensive_backtester import ComprehensiveBacktester
+    from gordon.backtesting.backtest_main import ComprehensiveBacktester
     print("✅ Backtester imported successfully")
 except ImportError as e:
     print(f"❌ Failed to import Backtester: {e}")

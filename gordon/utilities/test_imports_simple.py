@@ -1,6 +1,6 @@
 """
 Simple test script to verify utility modules work independently.
-This tests the utilities without loading the full exchange_orchestrator package.
+This tests the utilities without loading the full gordon package.
 """
 
 import sys

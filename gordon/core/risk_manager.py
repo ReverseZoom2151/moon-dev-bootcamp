@@ -8,7 +8,7 @@ Enhanced with Day 5 risk management functionality from:
 - Day_5_Projects/binance_5_risk_mgmt_hl.py (account minimum balance checks)
 - Day_5_Projects/binance_nice_funcs.py (position helpers, PnL calculations)
 
-REFACTORED: Now uses modular risk management components from exchange_orchestrator.core.risk
+REFACTORED: Now uses modular risk management components from gordon.core.risk
 - PositionSizer: Position sizing and calculations
 - LeverageManager: Leverage control and stop loss/take profit
 - DrawdownCalculator: Drawdown tracking and alerts
