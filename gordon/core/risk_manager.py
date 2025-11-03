@@ -33,6 +33,14 @@ from .risk import (
     RiskLimits
 )
 
+# Import RL components
+try:
+    from .rl import RLManager
+    RL_AVAILABLE = True
+except ImportError:
+    RL_AVAILABLE = False
+    RLManager = None
+
 
 class RiskManager:
     """
@@ -72,6 +80,20 @@ class RiskManager:
         self.pnl_calculator = PnLCalculator(event_bus, config_manager, demo_mode)
         self.account_monitor = AccountMonitor(event_bus, config_manager, demo_mode)
         self.risk_limits = RiskLimits(event_bus, config_manager, demo_mode)
+
+        # Initialize RL manager if available
+        if RL_AVAILABLE:
+            try:
+                # Get config from config_manager
+                config = {}
+                if hasattr(config_manager, 'config'):
+                    config = config_manager.config
+                self.rl_manager = RLManager(config=config)
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize RL Manager: {e}")
+                self.rl_manager = None
+        else:
+            self.rl_manager = None
 
         # Quick access to commonly used values (for backward compatibility)
         self.max_positions = self.risk_limits.max_positions
@@ -281,7 +303,7 @@ class RiskManager:
         )
 
         # Combine into unified metrics dict
-        return {
+        metrics = {
             # Risk limits
             "current_positions": risk_limits_metrics["current_positions"],
             "max_positions": risk_limits_metrics["max_positions"],
@@ -310,6 +332,80 @@ class RiskManager:
             "volatility": volatility,
             "risk_score": risk_score
         }
+        
+        # Add RL-optimized risk parameters if available
+        if self.rl_manager and self.rl_manager.enabled and self.rl_manager.risk_optimizer:
+            try:
+                portfolio_context = {
+                    'balance': metrics['current_balance'],
+                    'drawdown': current_drawdown,
+                    'drawdown_pct': current_drawdown,
+                    'leverage': self.max_leverage,
+                    'position_count': metrics['current_positions'],
+                    'margin_used': 0.0,  # Should be calculated
+                    'available_balance': metrics['current_balance'] * 0.5  # Simplified
+                }
+                market_context = {
+                    'volatility': volatility,
+                    'trend': 0.0,  # Should be calculated
+                    'volume_ratio': 1.0,
+                    'price_change_24h': daily_pnl / metrics['current_balance'] if metrics['current_balance'] > 0 else 0.0,
+                    'fear_greed_index': 50.0
+                }
+                performance_context = {
+                    'win_rate': 0.5,  # Should be calculated
+                    'sharpe_ratio': sharpe_ratio,
+                    'total_pnl': daily_pnl,
+                    'total_pnl_pct': current_drawdown,
+                    'daily_pnl': daily_pnl,
+                    'daily_pnl_pct': daily_pnl / metrics['current_balance'] if metrics['current_balance'] > 0 else 0.0,
+                    'consecutive_losses': 0
+                }
+                
+                rl_risk = self.rl_manager.optimize_risk(portfolio_context, market_context, performance_context)
+                if rl_risk:
+                    metrics['rl_optimized_risk'] = rl_risk
+            except Exception as e:
+                self.logger.warning(f"Failed to get RL risk optimization: {e}")
+        
+        return metrics
+    
+    def optimize_risk_with_rl(self) -> Optional[Dict]:
+        """Optimize risk parameters using RL if available."""
+        if not self.rl_manager or not self.rl_manager.enabled or not self.rl_manager.risk_optimizer:
+            return None
+        
+        metrics = self.get_risk_metrics()
+        
+        portfolio_context = {
+            'balance': metrics['current_balance'],
+            'drawdown': metrics['current_drawdown'],
+            'drawdown_pct': metrics['current_drawdown'],
+            'leverage': self.max_leverage,
+            'position_count': metrics['current_positions'],
+            'margin_used': 0.0,
+            'available_balance': metrics['current_balance'] * 0.5
+        }
+        
+        market_context = {
+            'volatility': metrics.get('volatility', 0.02),
+            'trend': 0.0,
+            'volume_ratio': 1.0,
+            'price_change_24h': metrics['daily_pnl'] / metrics['current_balance'] if metrics['current_balance'] > 0 else 0.0,
+            'fear_greed_index': 50.0
+        }
+        
+        performance_context = {
+            'win_rate': 0.5,
+            'sharpe_ratio': metrics.get('sharpe_ratio', 0.0),
+            'total_pnl': metrics['daily_pnl'],
+            'total_pnl_pct': metrics['current_drawdown'],
+            'daily_pnl': metrics['daily_pnl'],
+            'daily_pnl_pct': metrics['daily_pnl'] / metrics['current_balance'] if metrics['current_balance'] > 0 else 0.0,
+            'consecutive_losses': 0
+        }
+        
+        return self.rl_manager.optimize_risk(portfolio_context, market_context, performance_context)
     
     def _calculate_var_95(self) -> Optional[float]:
         """

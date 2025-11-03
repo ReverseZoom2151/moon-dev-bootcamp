@@ -8,6 +8,11 @@ Combines financial research with technical trading.
 
 import os
 import sys
+
+# Suppress TensorFlow oneDNN warnings before any TensorFlow imports
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
+
 import argparse
 import asyncio
 import json
@@ -311,6 +316,15 @@ def print_help():
     • quick-sell SYMBOL - Execute instant market sell
     • quick-monitor - Start file monitoring for rapid execution
     • add-to-quick-file SYMBOL [BUY|SELL] - Add token to monitoring file
+    
+    🤖 RL COMMANDS (Multi-Level RL Integration):
+    • rl-status - Show RL component status
+    • rl-select-strategy - Use RL to select best strategy
+    • rl-optimize-risk - Optimize risk parameters with RL
+    • rl-detect-regime - Detect current market regime
+    • rl-aggregate-signals - Aggregate signals using RL
+    • rl-optimize-position-size SYMBOL - Optimize position size with RL
+    • rl-optimize-allocation - Optimize portfolio allocation with RL
     
     • exit/quit - Exit Gordon
 
@@ -2098,6 +2112,307 @@ def run_interactive_mode(gordon: Agent, conversational: bool = False, exchange: 
                         print(f"\n✅ Position Size: {size} (Leverage: {leverage}x)")
                     else:
                         print("Usage: position-size [balance|usd|risk] [args...]")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-status'):
+                # RL: Show RL component status
+                print(f"\n🤖 RL Component Status...")
+                try:
+                    from gordon.core.rl import RLManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    rl_manager = RLManager(config=config)
+                    status = rl_manager.get_status()
+                    
+                    print(f"\n📊 RL System Status:")
+                    print(f"   Enabled: {status['enabled']}")
+                    
+                    if status['meta_selector']:
+                        print(f"\n✅ Meta-Strategy Selector:")
+                        print(f"   Training: {status['meta_selector'].get('training', False)}")
+                        print(f"   Memory: {status['meta_selector'].get('memory_size', 0)}")
+                        print(f"   Epsilon: {status['meta_selector'].get('epsilon', 0.0):.4f}")
+                    
+                    if status['signal_aggregator']:
+                        print(f"\n✅ Signal Aggregator:")
+                        print(f"   Training: {status['signal_aggregator'].get('training', False)}")
+                        print(f"   Memory: {status['signal_aggregator'].get('memory_size', 0)}")
+                    
+                    if status['risk_optimizer']:
+                        print(f"\n✅ Risk Optimizer:")
+                        print(f"   Training: {status['risk_optimizer'].get('training', False)}")
+                        print(f"   Memory: {status['risk_optimizer'].get('memory_size', 0)}")
+                    
+                    if status['regime_detector']:
+                        print(f"\n✅ Market Regime Detector:")
+                        print(f"   Training: {status['regime_detector'].get('training', False)}")
+                        print(f"   Memory: {status['regime_detector'].get('memory_size', 0)}")
+                    
+                    if status['portfolio_allocator']:
+                        print(f"\n✅ Portfolio Allocator:")
+                        print(f"   Training: {status['portfolio_allocator'].get('training', False)}")
+                        print(f"   Memory: {status['portfolio_allocator'].get('memory_size', 0)}")
+                    
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-select-strategy'):
+                # RL: Select best strategy using RL
+                print(f"\n🤖 RL Strategy Selection...")
+                try:
+                    from gordon.core.rl import RLManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    rl_manager = RLManager(config=config)
+                    market_context = {
+                        'volatility': 0.02,
+                        'trend': 0.0,
+                        'volume_ratio': 1.0,
+                        'price_change_24h': 0.0,
+                        'rsi': 50.0,
+                        'macd': 0.0,
+                        'bb_position': 0.5,
+                        'spread': 0.001,
+                        'liquidity': 1.0,
+                        'regime': 0.5,
+                        'fear_greed_index': 50.0,
+                        'correlation': 0.0
+                    }
+                    
+                    selection = rl_manager.select_strategy(market_context)
+                    if selection:
+                        print(f"\n✅ RL Selected Strategy:")
+                        print(f"   Strategy: {selection.get('strategy')}")
+                        print(f"   Confidence: {selection.get('confidence', 0.0):.2%}")
+                        print(f"\n   All Strategy Probabilities:")
+                        for strategy, prob in selection.get('all_probabilities', {}).items():
+                            print(f"      {strategy}: {prob:.4f}")
+                    else:
+                        print("❌ RL strategy selection not available")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-optimize-risk'):
+                # RL: Optimize risk parameters
+                print(f"\n🤖 RL Risk Optimization...")
+                try:
+                    from gordon.core.risk_manager import RiskManager
+                    from gordon.core.event_bus import EventBus
+                    from gordon.config.config_manager import ConfigManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    event_bus = EventBus()
+                    config_manager = ConfigManager()
+                    risk_manager = RiskManager(event_bus, config_manager, demo_mode=True)
+                    
+                    rl_risk = risk_manager.optimize_risk_with_rl()
+                    if rl_risk:
+                        print(f"\n✅ RL Optimized Risk Parameters:")
+                        print(f"   Risk Level: {rl_risk.get('risk_level_name', 'Unknown')}")
+                        print(f"   Risk Per Trade: {rl_risk.get('risk_per_trade', 0.0):.2%}")
+                        print(f"   Max Position Size: {rl_risk.get('max_position_size', 0.0):.2%}")
+                        print(f"   Max Leverage: {rl_risk.get('max_leverage', 1.0):.2f}")
+                        print(f"   Stop Loss: {rl_risk.get('stop_loss_pct', 0.0):.2%}")
+                        print(f"   Confidence: {rl_risk.get('confidence', 0.0):.2%}")
+                        print(f"   Recommendation: {rl_risk.get('recommendation', 'maintain')}")
+                    else:
+                        print("❌ RL risk optimization not available")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-detect-regime'):
+                # RL: Detect market regime
+                print(f"\n🤖 RL Market Regime Detection...")
+                try:
+                    from gordon.core.rl import RLManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    rl_manager = RLManager(config=config)
+                    market_context = {
+                        'volatility': 0.02,
+                        'trend': 0.0,
+                        'volume_ratio': 1.0,
+                        'rsi': 50.0,
+                        'macd': 0.0,
+                        'bb_position': 0.5
+                    }
+                    price_data = {
+                        'price_change_1h': 0.001,
+                        'price_change_24h': 0.01,
+                        'price_change_7d': 0.05,
+                        'high_low_ratio': 1.02
+                    }
+                    
+                    regime = rl_manager.detect_regime(market_context, price_data)
+                    if regime:
+                        print(f"\n✅ Detected Market Regime:")
+                        print(f"   Regime: {regime.get('regime_name', 'Unknown')}")
+                        print(f"   Confidence: {regime.get('confidence', 0.0):.2%}")
+                        print(f"\n   All Regime Probabilities:")
+                        for regime_name, prob in regime.get('all_probabilities', {}).items():
+                            print(f"      {regime_name}: {prob:.4f}")
+                    else:
+                        print("❌ RL regime detection not available")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-aggregate-signals'):
+                # RL: Aggregate signals
+                print(f"\n🤖 RL Signal Aggregation...")
+                print("Note: This requires actual strategy signals. Showing example...")
+                try:
+                    from gordon.core.rl import RLManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    rl_manager = RLManager(config=config)
+                    
+                    # Example signals
+                    signals = {
+                        'SMA': {'action': 'BUY', 'confidence': 0.7},
+                        'RSI': {'action': 'SELL', 'confidence': 0.6},
+                        'VWAP': {'action': 'BUY', 'confidence': 0.8}
+                    }
+                    market_context = {
+                        'volatility': 0.02,
+                        'trend': 0.0,
+                        'volume_ratio': 1.0
+                    }
+                    
+                    aggregated = rl_manager.aggregate_signals(signals, market_context)
+                    if aggregated:
+                        print(f"\n✅ Aggregated Signal:")
+                        print(f"   Action: {aggregated.get('action')}")
+                        print(f"   Confidence: {aggregated.get('confidence', 0.0):.2%}")
+                        print(f"   Weighted Confidence: {aggregated.get('weighted_confidence', 0.0):.2%}")
+                        print(f"   RL Confidence: {aggregated.get('rl_confidence', 0.0):.2%}")
+                    else:
+                        print("❌ RL signal aggregation not available")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-optimize-position-size'):
+                # RL: Optimize position size
+                parts = query.split()
+                symbol = parts[1].upper() if len(parts) > 1 else 'BTCUSDT'
+                print(f"\n🤖 RL Position Size Optimization for {symbol}...")
+                try:
+                    from gordon.core.rl import RLManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    rl_manager = RLManager(config=config)
+                    
+                    signal = {'confidence': 0.75, 'strength': 0.5, 'strategy_performance': 0.1, 'recent_win_rate': 0.6}
+                    market_context = {'volatility': 0.02, 'trend': 0.0, 'volume_ratio': 1.0, 'liquidity': 1.0, 'spread': 0.001}
+                    portfolio_context = {'available_balance': 10000.0, 'position_count': 2, 'correlation': 0.3, 'max_position_size': 0.1, 'drawdown_pct': 0.02}
+                    
+                    optimized = rl_manager.optimize_position_size(signal, market_context, portfolio_context)
+                    if optimized:
+                        print(f"\n✅ Optimized Position Size:")
+                        print(f"   Size Multiplier: {optimized.get('size_multiplier', 1.0):.2f}x")
+                        print(f"   Position Size: {optimized.get('position_size', 0.0):.2%}")
+                        print(f"   Base Size: {optimized.get('base_size', 0.0):.2%}")
+                        print(f"   Size Name: {optimized.get('size_name', 'Normal')}")
+                        print(f"   Confidence: {optimized.get('confidence', 0.0):.2%}")
+                        print(f"   Recommendation: {optimized.get('recommendation', 'maintain')}")
+                    else:
+                        print("❌ RL position size optimization not available")
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                continue
+
+            elif query.lower().startswith('rl-optimize-allocation'):
+                # RL: Optimize portfolio allocation
+                print(f"\n🤖 RL Portfolio Allocation Optimization...")
+                try:
+                    from gordon.core.rl import RLManager
+                    import yaml
+                    config_path = Path(__file__).parent.parent / 'config.yaml'
+                    config = {}
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
+                    
+                    rl_manager = RLManager(config=config)
+                    
+                    portfolio_context = {
+                        'balance': 10000.0,
+                        'available_balance': 5000.0,
+                        'position_count': 3,
+                        'total_pnl_pct': 0.05,
+                        'drawdown_pct': 0.02,
+                        'sharpe_ratio': 1.5,
+                        'diversification_score': 0.7
+                    }
+                    market_context = {
+                        'overall_trend': 0.1,
+                        'overall_volatility': 0.02,
+                        'regime': 0.6,
+                        'fear_greed_index': 60.0
+                    }
+                    
+                    allocation = rl_manager.optimize_allocation(portfolio_context, market_context)
+                    if allocation:
+                        print(f"\n✅ Optimized Portfolio Allocation:")
+                        print(f"   Strategy: {allocation.get('allocation_name', 'Unknown')}")
+                        print(f"   Cash: {allocation.get('cash_percent', 0.0):.2%}")
+                        print(f"   Positions: {allocation.get('positions_percent', 0.0):.2%}")
+                        print(f"   Confidence: {allocation.get('confidence', 0.0):.2%}")
+                        print(f"\n   Symbol Allocations:")
+                        for symbol, weight in allocation.get('symbol_allocations', {}).items():
+                            print(f"      {symbol}: {weight:.2%}")
+                    else:
+                        print("❌ RL portfolio allocation not available")
                 except Exception as e:
                     print(f"❌ Error: {e}")
                     import traceback

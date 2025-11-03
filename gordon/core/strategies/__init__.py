@@ -46,6 +46,9 @@ from .ma_reversal_strategy import MAReversalStrategy
 # Day 50 Enhanced Supply/Demand Strategy
 from .enhanced_sd_strategy import EnhancedSupplyDemandStrategy
 
+# DQN Reinforcement Learning Strategy
+from .dqn_rl_strategy import DQNStrategy, DQNAgent, TradingEnvironment
+
 # Import all strategy classes for easy access
 __all__ = [
     'BaseStrategy',
@@ -81,4 +84,8 @@ __all__ = [
     'MAReversalStrategy',
     # Day 50 Enhanced Supply/Demand Strategy
     'EnhancedSupplyDemandStrategy',
+    # DQN Reinforcement Learning Strategy
+    'DQNStrategy',
+    'DQNAgent',
+    'TradingEnvironment',
 ]

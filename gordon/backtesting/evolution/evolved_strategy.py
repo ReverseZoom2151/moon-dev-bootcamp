@@ -27,7 +27,7 @@ try:
     TALIB_AVAILABLE = True
 except ImportError:
     TALIB_AVAILABLE = False
-    logger.warning("TA-Lib not available. Using fallback indicators.")
+    logger.debug("TA-Lib not available. Using fallback indicators.")  # Changed to DEBUG level
 
 
 class EvolvedStrategy(Strategy):

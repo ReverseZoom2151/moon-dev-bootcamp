@@ -49,7 +49,7 @@ try:
 except ImportError:
     TALIB_AVAILABLE = False
     talib = None  # type: ignore[assignment]
-    logger.warning("TA-Lib not available. Some indicators may not work.")
+    logger.debug("TA-Lib not available. Some indicators may not work.")  # Changed to DEBUG level
 
 # Initialize DEAP creator classes at module level (if DEAP is available)
 # This must be done before type annotations that reference creator.Individual

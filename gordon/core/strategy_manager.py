@@ -20,6 +20,14 @@ from .strategies.base import BaseStrategy
 # Import enhanced strategy engine
 from .strategy_engine import EnhancedStrategyEngine, StrategyInstance, StrategyStatus
 
+# Import RL components
+try:
+    from .rl import RLManager
+    RL_AVAILABLE = True
+except ImportError:
+    RL_AVAILABLE = False
+    RLManager = None
+
 
 class StrategyManager:
     """
@@ -59,6 +67,16 @@ class StrategyManager:
 
         # Exchange connections
         self.exchange_connections = {}
+        
+        # Initialize RL manager if available
+        if RL_AVAILABLE:
+            try:
+                self.rl_manager = RLManager(config=self.config)
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize RL Manager: {e}")
+                self.rl_manager = None
+        else:
+            self.rl_manager = None
 
         # Register built-in strategies
         self._register_built_in_strategies()
@@ -337,6 +355,78 @@ class StrategyManager:
             statuses[name] = self.get_strategy_status(name)
 
         return statuses
+    
+    def get_strategy(self, name: Optional[str] = None) -> Optional[BaseStrategy]:
+        """
+        Get a strategy by name.
+        If no name provided and RL is enabled, use RL to select best strategy.
+
+        Args:
+            name: Strategy name (optional if RL enabled)
+
+        Returns:
+            Strategy instance or None
+        """
+        if name:
+            return self.strategies.get(name)
+        
+        # If RL enabled and no name provided, use RL to select
+        if self.rl_manager and self.rl_manager.enabled:
+            # Get market context (simplified - should be enhanced)
+            market_context = self._get_market_context()
+            selection = self.rl_manager.select_strategy(market_context)
+            if selection:
+                selected_name = selection.get('strategy')
+                return self.strategies.get(selected_name)
+        
+        return None
+    
+    def _get_market_context(self) -> Dict[str, Any]:
+        """Get market context for RL components."""
+        # Simplified - should be enhanced with actual market data
+        return {
+            'volatility': 0.02,
+            'trend': 0.0,
+            'volume_ratio': 1.0,
+            'price_change_24h': 0.0,
+            'rsi': 50.0,
+            'macd': 0.0,
+            'bb_position': 0.5,
+            'spread': 0.001,
+            'liquidity': 1.0,
+            'regime': 0.5,
+            'fear_greed_index': 50.0,
+            'correlation': 0.0
+        }
+    
+    async def aggregate_signals(self, signals: Dict[str, Dict], market_context: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Aggregate signals from multiple strategies using RL if available.
+        
+        Args:
+            signals: Dictionary mapping strategy names to signals
+            market_context: Market context (optional)
+            
+        Returns:
+            Aggregated signal
+        """
+        if self.rl_manager and self.rl_manager.enabled and self.rl_manager.signal_aggregator:
+            if market_context is None:
+                market_context = self._get_market_context()
+            return self.rl_manager.aggregate_signals(signals, market_context) or {}
+        
+        # Fallback: simple aggregation
+        buy_signals = [s for s in signals.values() if s.get('action') == 'BUY']
+        sell_signals = [s for s in signals.values() if s.get('action') == 'SELL']
+        
+        if buy_signals:
+            avg_confidence = sum(s.get('confidence', 0.5) for s in buy_signals) / len(buy_signals)
+            return {'action': 'BUY', 'confidence': avg_confidence}
+        elif sell_signals:
+            avg_confidence = sum(s.get('confidence', 0.5) for s in sell_signals) / len(sell_signals)
+            return {'action': 'SELL', 'confidence': avg_confidence}
+        else:
+            return {'action': 'HOLD', 'confidence': 0.5}
 
     async def start(self):
         """Start the strategy manager."""

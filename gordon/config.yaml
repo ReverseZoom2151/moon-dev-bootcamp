@@ -504,6 +504,89 @@ enhanced_sd_strategy:
   timeframe: "15m"
   days_back: 0.2
 
+# DQN Reinforcement Learning Strategy
+dqn_rl_strategy:
+  enabled: true
+  symbol: "BTCUSDT"
+  timeframe: "1h"
+  position_size: 0.01  # Position size in base currency
+  # RL Configuration
+  state_size: 10  # Number of features in state vector
+  action_size: 3  # 0: hold/close, 1: buy, 2: sell
+  learning_rate: 0.001
+  training_episodes: 100  # Episodes per training session
+  batch_size: 32  # Batch size for experience replay
+  min_confidence: 0.6  # Minimum confidence to generate signal
+  lookback_periods: 500  # Number of candles for training
+  model_dir: "./models/dqn"  # Directory to save/load models
+  retrain_interval_hours: 12  # Hours between retraining
+
+# Multi-Level RL Integration (Broader RL System)
+rl:
+  enabled: true  # Enable RL components
+  
+  # Model directory for all RL components
+  model_dir: "./models/rl"
+  
+  # Available strategies for meta-selection
+  available_strategies:
+    - "SMA"
+    - "RSI"
+    - "VWAP"
+    - "Bollinger"
+    - "Breakout"
+    - "MeanReversion"
+    - "DQN"
+    - "MarketMaker"
+  
+  # Meta-Strategy Selection (Level 1)
+  meta_strategy_selection:
+    enabled: true
+    training_episodes: 1000
+    update_interval: 3600  # Re-train every hour (seconds)
+    learning_rate: 0.001
+    batch_size: 32
+  
+  # Signal Aggregation (Level 2)
+  signal_aggregation:
+    enabled: true
+    min_confidence: 0.6
+    strategies: ["SMA", "RSI", "VWAP", "DQN"]  # Strategies to aggregate
+    learning_rate: 0.001
+    batch_size: 32
+  
+  # Dynamic Risk Optimization (Level 3)
+  risk_optimization:
+    enabled: true
+    min_risk_per_trade: 0.01  # 1% floor
+    max_risk_per_trade: 0.05  # 5% ceiling
+    training_episodes: 500
+    learning_rate: 0.001
+    batch_size: 32
+  
+  # Position Size Optimization (Level 4)
+  position_sizing:
+    enabled: true
+    base_size: 0.01  # 1% base position size
+    max_multiplier: 2.0  # 2x normal size max
+    learning_rate: 0.001
+    batch_size: 32
+  
+  # Market Regime Detection (Level 5)
+  regime_detection:
+    enabled: true
+    training_episodes: 500
+    learning_rate: 0.001
+    batch_size: 32
+  
+  # Portfolio Allocation (Level 6)
+  portfolio_allocation:
+    enabled: true
+    symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT"]
+    training_episodes: 500
+    learning_rate: 0.001
+    batch_size: 32
+
 # Day 51: Quick Buy/Sell Strategy
 quick_buysell:
   enabled: true
